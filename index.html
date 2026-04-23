@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="HikariCP의 핵심 클래스와 커넥션 흐름을 브라우저에서 탐색하는 정적 문서 뷰어"
+    />
+    <title>HikariCP Explorer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="sidebar-header">HikariCP Explorer</div>
+        <div class="sidebar-body">
+          <input id="search" class="search" type="text" placeholder="파일 검색..." />
+          <div id="file-list"></div>
+        </div>
+        <div class="sidebar-footer">
+          <div class="summary-title">Doc Summary</div>
+          <div id="summary" class="summary-text"></div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div id="tabs" class="tabs"></div>
+        <div id="viewer" class="viewer">
+          <div class="toast">IDE 모드 활성: 클래스명을 클릭하면 해당 소스로 이동합니다.</div>
+          <div id="code" class="code-wrap"></div>
+        </div>
+        <div class="footer">
+          <div id="footer-path"></div>
+          <div class="right">
+            <span><span class="dot"></span>Connected</span>
+            <span class="footer-accent">JAVA 17</span>
+          </div>
+        </div>
+      </main>
+    </div>
+    <script src="./index.js" defer></script>
+  </body>
+</html>

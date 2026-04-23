@@ -1,0 +1,9 @@
+{
+  "name": "hikaricp",
+  "version": "1.0.0",
+  "description": "Static GitHub Pages site for the HikariCP explorer",
+  "private": true,
+  "scripts": {
+    "serve": "python3 -m http.server 4173"
+  }
+}
