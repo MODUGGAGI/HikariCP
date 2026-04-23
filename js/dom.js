@@ -1,0 +1,17 @@
+export const fileListEl = document.getElementById("file-list");
+export const tabsEl = document.getElementById("tabs");
+export const summaryEl = document.getElementById("summary");
+export const codeEl = document.getElementById("code");
+export const footerPathEl = document.getElementById("footer-path");
+export const searchEl = document.getElementById("search");
+export const viewerEl = document.getElementById("viewer");
+export const historyBackEl = document.getElementById("history-back");
+export const historyForwardEl = document.getElementById("history-forward");
+export const scenarioToggleEl = document.getElementById("scenario-toggle");
+export const scenarioPanelEl = document.getElementById("scenario-panel");
+export const scenarioSelectEl = document.getElementById("scenario-select");
+export const scenarioFirstEl = document.getElementById("scenario-first");
+export const scenarioPrevEl = document.getElementById("scenario-prev");
+export const scenarioNextEl = document.getElementById("scenario-next");
+export const scenarioHeadingEl = document.getElementById("scenario-heading");
+export const scenarioCaptionEl = document.getElementById("scenario-caption");

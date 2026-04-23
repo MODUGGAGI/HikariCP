@@ -26,9 +26,24 @@
 
       <main class="main">
         <div class="topbar">
-          <div class="history-controls">
-            <button id="history-back" class="history-button" type="button">← Back</button>
-            <button id="history-forward" class="history-button" type="button">Forward →</button>
+          <div class="topbar-row">
+            <div class="history-controls">
+              <button id="history-back" class="history-button" type="button">← Back</button>
+              <button id="history-forward" class="history-button" type="button">Forward →</button>
+              <button id="scenario-toggle" class="history-button" type="button">Scenario</button>
+            </div>
+          </div>
+          <div id="scenario-panel" class="scenario-panel" hidden>
+            <div class="scenario-controls">
+              <select id="scenario-select" class="scenario-select"></select>
+              <button id="scenario-first" class="history-button" type="button">First</button>
+              <button id="scenario-prev" class="history-button" type="button">Prev</button>
+              <button id="scenario-next" class="history-button" type="button">Next</button>
+            </div>
+            <div class="scenario-status">
+              <div id="scenario-heading" class="scenario-heading"></div>
+              <div id="scenario-caption" class="scenario-caption"></div>
+            </div>
           </div>
         </div>
         <div id="tabs" class="tabs"></div>
@@ -45,6 +60,6 @@
         </div>
       </main>
     </div>
-    <script src="./index.js" defer></script>
+    <script type="module" src="./js/main.js"></script>
   </body>
 </html>

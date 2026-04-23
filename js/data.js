@@ -1,4 +1,4 @@
-const CODE_DATA = {
+export const CODE_DATA = {
   "HikariDataSource.java": {
     id: "hds",
     description: "HikariCP의 진입점 역할을 하는 DataSource 구현체입니다.",
@@ -356,26 +356,30 @@ const CODE_DATA = {
   }
 };
 
-const KEYWORDS = new Set([
+export const KEYWORDS = new Set([
   "public", "private", "protected", "final", "volatile", "class", "extends",
   "implements", "interface", "new", "return", "if", "else", "do", "while",
   "for", "try", "catch", "finally", "throw", "throws", "var", "int", "long",
   "boolean", "void", "static", "const"
 ]);
-const CLASS_ICON_PATH = "./image/class_icon.png";
-const SYMBOL_LINKS = {
+
+export const CLASS_ICON_PATH = "./image/class_icon.png";
+
+export const SYMBOL_LINKS = {
   IConcurrentBagEntry: {
     file: "ConcurrentBag.java",
     anchor: "cb-iconcurrentbagentry"
   }
 };
-const FILE_PRIMARY_TYPES = {
+
+export const FILE_PRIMARY_TYPES = {
   "HikariDataSource.java": "HikariDataSource",
   "HikariPool.java": "HikariPool",
   "ConcurrentBag.java": "ConcurrentBag",
   "PoolEntry.java": "PoolEntry"
 };
-const TYPE_METHOD_LINKS = {
+
+export const TYPE_METHOD_LINKS = {
   HikariDataSource: {
     getConnection: { file: "HikariDataSource.java", anchor: "hds-getconn" }
   },
@@ -402,7 +406,8 @@ const TYPE_METHOD_LINKS = {
     setState: { file: "ConcurrentBag.java", anchor: "cb-entry-setstate" }
   }
 };
-const TYPE_MEMBER_TYPES = {
+
+export const TYPE_MEMBER_TYPES = {
   HikariDataSource: {
     fastPathPool: "HikariPool",
     pool: "HikariPool"
@@ -414,14 +419,17 @@ const TYPE_MEMBER_TYPES = {
     hikariPool: "HikariPool"
   }
 };
-const MANUAL_TYPE_CONTEXTS = {
+
+export const MANUAL_TYPE_CONTEXTS = {
   "ConcurrentBag.java": {
     bagEntry: "PoolEntry",
     listener: "HikariPool"
   }
 };
-const KNOWN_TYPES = [...Object.values(FILE_PRIMARY_TYPES), "IConcurrentBagEntry"];
-const TYPE_CONTEXTS = Object.fromEntries(
+
+export const KNOWN_TYPES = [...Object.values(FILE_PRIMARY_TYPES), "IConcurrentBagEntry"];
+
+export const TYPE_CONTEXTS = Object.fromEntries(
   Object.entries(CODE_DATA).map(([fileName, file]) => {
     const context = {
       this: FILE_PRIMARY_TYPES[fileName],
@@ -441,425 +449,132 @@ const TYPE_CONTEXTS = Object.fromEntries(
   })
 );
 
-const state = {
-  activeFile: "HikariDataSource.java",
-  searchTerm: ""
-};
-
-const fileListEl = document.getElementById("file-list");
-const tabsEl = document.getElementById("tabs");
-const summaryEl = document.getElementById("summary");
-const codeEl = document.getElementById("code");
-const footerPathEl = document.getElementById("footer-path");
-const searchEl = document.getElementById("search");
-const viewerEl = document.getElementById("viewer");
-const historyBackEl = document.getElementById("history-back");
-const historyForwardEl = document.getElementById("history-forward");
-
-const navigationHistory = {
-  backStack: [],
-  forwardStack: []
-};
-
-function escapeHtml(text) {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function renderLink(className, label, fileName, anchor) {
-  const anchorAttr = anchor ? ` data-anchor="${anchor}"` : "";
-  return `<span class="${className}" data-file="${fileName}"${anchorAttr}>${label}</span>`;
-}
-
-function isMethodDeclaration(line, methodName) {
-  const trimmedLine = line.trim();
-  if (!trimmedLine.includes(`${methodName}(`)) {
-    return false;
-  }
-
-  if (/^(return|if|for|while|switch|catch|throw|new)\b/.test(trimmedLine)) {
-    return false;
-  }
-
-  if (trimmedLine.includes(`.${methodName}(`)) {
-    return false;
-  }
-
-  const declarationPattern = new RegExp(
-    `^\\s*(?:@\\w+\\s+)?(?:public|private|protected)?(?:\\s+(?:static|final|synchronized|abstract|default|native|strictfp))*\\s*(?:<[\\w\\s,?]+>\\s+)?(?:[\\w.<>\\[\\],?]+\\s+)+${methodName}\\s*\\(`
-  );
-  return declarationPattern.test(line);
-}
-
-function findReceiverExpression(prefix) {
-  const match = prefix.match(/([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\.\s*$/);
-  return match?.[1] || null;
-}
-
-function resolveExpressionType(fileName, expression) {
-  const parts = expression.split(".");
-  let currentType = TYPE_CONTEXTS[fileName]?.[parts[0]];
-
-  if (!currentType) {
-    return null;
-  }
-
-  for (let index = 1; index < parts.length; index += 1) {
-    currentType = TYPE_MEMBER_TYPES[currentType]?.[parts[index]];
-    if (!currentType) {
-      return null;
-    }
-  }
-
-  return currentType;
-}
-
-function resolveMethodTarget(fileName, line, lineIndex, methodName, offset) {
-  const receiverExpression = findReceiverExpression(line.slice(0, offset));
-  if (receiverExpression) {
-    const receiverType = resolveExpressionType(fileName, receiverExpression);
-    return receiverType ? TYPE_METHOD_LINKS[receiverType]?.[methodName] || null : null;
-  }
-
-  if (isMethodDeclaration(line, methodName)) {
-    return null;
-  }
-
-  const nextLocalOccurrence = getMethodOccurrences(fileName).find((item) =>
-    item.name === methodName && item.lineIndex > lineIndex
-  );
-  if (nextLocalOccurrence) {
-    return { file: fileName, anchor: nextLocalOccurrence.anchor };
-  }
-
-  const currentType = FILE_PRIMARY_TYPES[fileName];
-  return TYPE_METHOD_LINKS[currentType]?.[methodName] || null;
-}
-
-function getMethodOccurrences(fileName) {
-  const file = CODE_DATA[fileName];
-  const counts = {};
-
-  return file.code.split("\n").flatMap((line, lineIndex) =>
-    file.methods.flatMap((method) => {
-      if (!isMethodDeclaration(line, method.name)) {
-        return [];
+export const SCENARIOS = [
+  {
+    id: "connection-request",
+    title: "커넥션 요청 시작",
+    description: "HikariDataSource에서 시작해 ConcurrentBag, PoolEntry를 거쳐 최종 Connection 반환까지의 흐름을 따라갑니다.",
+    steps: [
+      {
+        file: "HikariDataSource.java",
+        anchor: "hds-getconn",
+        caption: "커넥션 요청은 HikariDataSource.getConnection()에서 시작됩니다.",
+        delay: 1400
+      },
+      {
+        file: "HikariDataSource.java",
+        lineMatch: "if (fastPathPool != null) {",
+        caption: "먼저 fastPathPool이 이미 준비되어 있는지 확인합니다.",
+        delay: 1200
+      },
+      {
+        file: "HikariDataSource.java",
+        lineMatch: "return fastPathPool.getConnection();",
+        caption: "fastPathPool이 있으면 HikariPool.getConnection()으로 바로 위임합니다.",
+        delay: 1500
+      },
+      {
+        file: "HikariPool.java",
+        anchor: "hp-getconn",
+        caption: "HikariPool의 첫 번째 getConnection()은 타임아웃 값을 채워 넣는 진입점입니다.",
+        delay: 1400
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "return getConnection(connectionTimeout);",
+        caption: "내부 오버로드 getConnection(long hardTimeout) 호출로 흐름이 이어집니다.",
+        delay: 1400
+      },
+      {
+        file: "HikariPool.java",
+        anchor: "hp-getconn-2",
+        caption: "실제 풀 대기와 커넥션 획득 로직은 두 번째 getConnection(long)에서 처리됩니다.",
+        delay: 1600
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "var poolEntry = connectionBag.borrow(timeout, MILLISECONDS);",
+        caption: "이 시점에 ConcurrentBag.borrow()를 호출해 PoolEntry를 빌리려 시도합니다.",
+        delay: 1600
+      },
+      {
+        file: "ConcurrentBag.java",
+        anchor: "cb-borrow",
+        caption: "ConcurrentBag.borrow()가 스레드 로컬 캐시, sharedList, handoffQueue 순으로 탐색을 시작합니다.",
+        delay: 1600
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "final var list = threadLocalList.get();",
+        caption: "가장 먼저 현재 스레드 전용 캐시를 확인합니다.",
+        delay: 1200
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "for (T bagEntry : sharedList) {",
+        caption: "캐시에 없으면 sharedList를 순회하면서 사용할 수 있는 엔트리를 찾습니다.",
+        delay: 1400
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "listener.addBagItem(waiting);",
+        caption: "그래도 못 찾으면 listener에 새 엔트리 추가를 요청하고 handoffQueue 대기로 넘어갑니다.",
+        delay: 1600
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "if (bagEntry != null && bagEntry.compareAndSet(STATE_NOT_IN_USE, STATE_IN_USE)) {",
+        caption: "사용 가능한 엔트리를 찾으면 compareAndSet()으로 상태를 IN_USE로 바꾸며 점유를 확정합니다.",
+        delay: 1500
+      },
+      {
+        file: "PoolEntry.java",
+        anchor: "pe-compareandset",
+        caption: "이 compareAndSet()은 실제로 PoolEntry의 원자적 상태 전이 메서드를 호출합니다.",
+        delay: 1500
+      },
+      {
+        file: "PoolEntry.java",
+        lineMatch: "return stateUpdater.compareAndSet(this, expect, update);",
+        caption: "AtomicIntegerFieldUpdater를 통해 PoolEntry 상태가 원자적으로 바뀝니다.",
+        delay: 1500
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "if (poolEntry == null) {",
+        caption: "borrow()가 끝나면 HikariPool로 돌아와 먼저 timeout으로 null이 왔는지 확인합니다.",
+        delay: 1400
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "if (poolEntry.isMarkedEvicted() || (elapsedMillis(poolEntry.lastAccessed, now) > aliveBypassWindowMs && isConnectionDead(poolEntry.connection))) {",
+        caption: "그다음 빌려온 PoolEntry가 축출 대상이거나 죽은 커넥션인지 검사합니다.",
+        delay: 1600
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "metricsTracker.recordBorrowStats(poolEntry, startTime);",
+        caption: "정상 엔트리면 borrow 통계를 기록하고 요청 경계를 시작할 준비를 합니다.",
+        delay: 1300
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "return poolEntry.createProxyConnection(leakTaskFactory.schedule(poolEntry));",
+        caption: "마지막으로 PoolEntry를 HikariProxyConnection으로 감싸서 호출자에게 반환합니다.",
+        delay: 1700
+      },
+      {
+        file: "HikariDataSource.java",
+        lineMatch: "return fastPathPool.getConnection();",
+        caption: "HikariPool이 만든 ProxyConnection이 다시 HikariDataSource를 통해 애플리케이션으로 전달됩니다.",
+        delay: 1700
+      },
+      {
+        file: "HikariDataSource.java",
+        anchor: "hds-getconn",
+        caption: "이렇게 요청 1회가 끝나면 호출자는 풀에서 빌린 Connection 프록시를 얻게 됩니다.",
+        delay: 1800
       }
-
-      counts[method.name] = (counts[method.name] || 0) + 1;
-      const occurrenceIndex = counts[method.name];
-
-      return [{
-        name: method.name,
-        lineIndex,
-        anchor: occurrenceIndex === 1 ? method.id : `${method.id}-${occurrenceIndex}`
-      }];
-    })
-  );
-}
-
-function getCurrentLocation() {
-  return {
-    file: state.activeFile,
-    scrollTop: viewerEl.scrollTop
-  };
-}
-
-function isSameLocation(left, right) {
-  return left?.file === right?.file && left?.scrollTop === right?.scrollTop;
-}
-
-function updateHistoryButtons() {
-  historyBackEl.disabled = navigationHistory.backStack.length === 0;
-  historyForwardEl.disabled = navigationHistory.forwardStack.length === 0;
-}
-
-function restoreLocation(location) {
-  if (!location || !CODE_DATA[location.file]) {
-    return;
+    ]
   }
-
-  setActiveFile(location.file);
-  requestAnimationFrame(() => {
-    viewerEl.scrollTop = location.scrollTop ?? 0;
-  });
-}
-
-function pushHistoryEntry(entry) {
-  const lastEntry = navigationHistory.backStack[navigationHistory.backStack.length - 1];
-  if (!isSameLocation(lastEntry, entry)) {
-    navigationHistory.backStack.push(entry);
-  }
-  navigationHistory.forwardStack = [];
-  updateHistoryButtons();
-}
-
-function navigateToFile(fileName, options = {}) {
-  if (!CODE_DATA[fileName]) {
-    return;
-  }
-
-  const {
-    anchor,
-    preserveScroll = false,
-    pushHistory = false
-  } = options;
-
-  if (pushHistory) {
-    pushHistoryEntry(getCurrentLocation());
-  }
-
-  setActiveFile(fileName);
-  requestAnimationFrame(() => {
-    if (!preserveScroll) {
-      viewerEl.scrollTop = 0;
-    }
-
-    if (anchor) {
-      const target = document.getElementById(anchor);
-      if (!target) {
-        return;
-      }
-
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
-      target.classList.add("highlight");
-      window.setTimeout(() => target.classList.remove("highlight"), 1500);
-    }
-  });
-}
-
-function highlightLine(line, fileName, lineIndex) {
-  let codePart = line;
-  let commentPart = "";
-  const commentIdx = line.indexOf("//");
-  const blockCommentIdx = line.indexOf("/*");
-  const finalCommentIdx = commentIdx !== -1 ? commentIdx : blockCommentIdx;
-
-  if (finalCommentIdx !== -1) {
-    codePart = line.slice(0, finalCommentIdx);
-    commentPart = `<span class="comment">${escapeHtml(line.slice(finalCommentIdx))}</span>`;
-  }
-
-  const classNames = Object.keys(CODE_DATA).map((name) => name.replace(".java", ""));
-  const masterRegex = /("(?:\\.|[^\\"])*")|(@\w+)|(\b\w+\b)(?=\s*\()|(\b\w+\b)|([^\w\s]+)|(\s+)/g;
-
-  const formattedCode = codePart.replace(
-    masterRegex,
-    (match, string, annotation, methodWord, word, operator, space, offset) => {
-      if (string) return `<span class="string">${escapeHtml(string)}</span>`;
-      if (annotation) return `<span class="anno">${escapeHtml(annotation)}</span>`;
-      if (methodWord) {
-        if (SYMBOL_LINKS[methodWord]) {
-          const { file, anchor } = SYMBOL_LINKS[methodWord];
-          return renderLink("class-link", methodWord, file, anchor);
-        }
-        if (classNames.includes(methodWord)) {
-          return renderLink("class-link", methodWord, `${methodWord}.java`);
-        }
-
-        const methodTarget = resolveMethodTarget(fileName, codePart, lineIndex, methodWord, offset);
-        if (methodTarget) {
-          return renderLink("method-link", methodWord, methodTarget.file, methodTarget.anchor);
-        }
-
-        if (/^[A-Z]/.test(methodWord)) return `<span class="type">${methodWord}</span>`;
-        return methodWord;
-      }
-      if (word) {
-        if (KEYWORDS.has(word)) return `<span class="kw">${word}</span>`;
-        if (SYMBOL_LINKS[word]) {
-          const { file, anchor } = SYMBOL_LINKS[word];
-          return renderLink("class-link", word, file, anchor);
-        }
-        if (classNames.includes(word)) {
-          return renderLink("class-link", word, `${word}.java`);
-        }
-        if (/^[A-Z]/.test(word)) return `<span class="type">${word}</span>`;
-        return word;
-      }
-      if (operator) return `<span class="op">${escapeHtml(operator)}</span>`;
-      return space || match;
-    }
-  );
-
-  return formattedCode + commentPart;
-}
-
-function setActiveFile(fileName) {
-  if (!CODE_DATA[fileName]) {
-    return;
-  }
-
-  state.activeFile = fileName;
-  render();
-}
-
-function jumpToAnchor(fileName, targetId) {
-  navigateToFile(fileName, { anchor: targetId, pushHistory: true });
-}
-
-function goBack() {
-  const previousLocation = navigationHistory.backStack.pop();
-  if (!previousLocation) {
-    return;
-  }
-
-  const currentLocation = getCurrentLocation();
-  if (!isSameLocation(currentLocation, previousLocation)) {
-    navigationHistory.forwardStack.push(currentLocation);
-  }
-
-  restoreLocation(previousLocation);
-  updateHistoryButtons();
-}
-
-function goForward() {
-  const nextLocation = navigationHistory.forwardStack.pop();
-  if (!nextLocation) {
-    return;
-  }
-
-  const currentLocation = getCurrentLocation();
-  if (!isSameLocation(currentLocation, nextLocation)) {
-    navigationHistory.backStack.push(currentLocation);
-  }
-
-  restoreLocation(nextLocation);
-  updateHistoryButtons();
-}
-
-function jumpToMethod(fileName, methodName) {
-  const performJump = () => {
-    const occurrences = getMethodOccurrences(fileName).filter((item) => item.name === methodName);
-    if (occurrences.length === 0) {
-      return;
-    }
-
-    const nextOccurrence = occurrences.find((item) => {
-      const target = document.getElementById(item.anchor);
-      return target && target.offsetTop > viewerEl.scrollTop + 4;
-    }) || occurrences[0];
-
-    navigateToFile(fileName, { anchor: nextOccurrence.anchor, preserveScroll: true });
-  };
-
-  pushHistoryEntry(getCurrentLocation());
-
-  if (state.activeFile !== fileName) {
-    setActiveFile(fileName);
-    requestAnimationFrame(performJump);
-    return;
-  }
-
-  performJump();
-}
-
-function renderSidebar() {
-  const files = Object.keys(CODE_DATA).filter((name) =>
-    name.toLowerCase().includes(state.searchTerm.toLowerCase())
-  );
-
-  fileListEl.innerHTML = files.map((fileName) => {
-    const file = CODE_DATA[fileName];
-    const isActive = fileName === state.activeFile;
-
-    return `
-      <div>
-        <button class="file-button ${isActive ? "active" : ""}" data-action="file" data-file="${fileName}">
-          <span>${isActive ? "▾" : "▸"}</span>
-          <img class="class-icon" src="${CLASS_ICON_PATH}" alt="" />
-          <span>${fileName}</span>
-        </button>
-        ${isActive ? `
-          <div class="method-list">
-            ${file.methods.map((method) => `
-              <button class="method-button" data-action="method" data-file="${fileName}" data-method-name="${method.name}">
-                ◦ ${method.name}()
-              </button>
-            `).join("")}
-          </div>
-        ` : ""}
-      </div>
-    `;
-  }).join("");
-}
-
-function renderTabs() {
-  tabsEl.innerHTML = Object.keys(CODE_DATA).map((fileName) => `
-    <button class="tab-button ${fileName === state.activeFile ? "active" : ""}" data-action="file" data-file="${fileName}">
-      <img class="class-icon" src="${CLASS_ICON_PATH}" alt="" />
-      <span>${fileName}</span>
-    </button>
-  `).join("");
-}
-
-function renderCode() {
-  const file = CODE_DATA[state.activeFile];
-  const lines = file.code.split("\n");
-  const methodOccurrences = getMethodOccurrences(state.activeFile);
-  const methodOccurrenceByLine = new Map(methodOccurrences.map((item) => [item.lineIndex, item]));
-
-  summaryEl.textContent = file.description;
-  footerPathEl.textContent = `src/main/java/com/zaxxer/hikari/${state.activeFile}`;
-
-  codeEl.innerHTML = lines.map((line, idx) => {
-    const method = methodOccurrenceByLine.get(idx);
-    const anchor = file.anchors?.find((item) => line.includes(item.match));
-    const lineId = method?.anchor || anchor?.id || "";
-    const lineClass = method ? "method" : "";
-
-    return `
-      <div class="code-line ${lineClass}" ${lineId ? `id="${lineId}"` : ""}>
-        <span class="line-number">${idx + 1}</span>
-        <span class="line-code">${highlightLine(line, state.activeFile, idx)}</span>
-      </div>
-    `;
-  }).join("");
-}
-
-function render() {
-  renderSidebar();
-  renderTabs();
-  renderCode();
-}
-
-document.body.addEventListener("click", (event) => {
-  const actionTarget = event.target.closest("[data-action]");
-  if (actionTarget) {
-    const action = actionTarget.dataset.action;
-    const fileName = actionTarget.dataset.file;
-
-    if (action === "file") {
-      navigateToFile(fileName, { pushHistory: true });
-    }
-
-    if (action === "method") {
-      jumpToMethod(fileName, actionTarget.dataset.methodName);
-    }
-
-    return;
-  }
-
-  const navLink = event.target.closest(".class-link, .method-link");
-  if (navLink) {
-    if (navLink.dataset.anchor) {
-      jumpToAnchor(navLink.dataset.file, navLink.dataset.anchor);
-      return;
-    }
-
-    navigateToFile(navLink.dataset.file, { pushHistory: true });
-  }
-});
-
-historyBackEl.addEventListener("click", goBack);
-historyForwardEl.addEventListener("click", goForward);
-
-searchEl.addEventListener("input", (event) => {
-  state.searchTerm = event.target.value;
-  renderSidebar();
-});
-
-render();
-updateHistoryButtons();
+];
