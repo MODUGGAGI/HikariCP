@@ -101,8 +101,11 @@ input {
   color: var(--blue);
 }
 
-.file-icon {
-  opacity: 0.9;
+.class-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .method-list {
@@ -153,6 +156,9 @@ input {
 }
 
 .tab-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: auto;
   min-width: 0;
   white-space: nowrap;
