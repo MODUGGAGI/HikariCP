@@ -6,7 +6,7 @@ import {
   TYPE_METHOD_LINKS,
   TYPE_MEMBER_TYPES,
   TYPE_CONTEXTS
-} from "./data.js";
+} from "./code-data.js";
 
 export function escapeHtml(text) {
   return text

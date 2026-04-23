@@ -1,6 +1,15 @@
-import { CODE_DATA, CLASS_ICON_PATH } from "./data.js";
-import { state, getActiveScenarioStep } from "./state.js";
-import { fileListEl, tabsEl, summaryEl, codeEl, footerPathEl } from "./dom.js";
+import { CODE_DATA, CLASS_ICON_PATH } from "./code-data.js";
+import { state, scenarioState, getActiveScenario, getActiveScenarioStep } from "./state.js";
+import {
+  fileListEl,
+  tabsEl,
+  summaryEl,
+  codeEl,
+  footerPathEl,
+  scenarioOutlineEl,
+  scenarioOutlineTitleEl,
+  scenarioStepListEl
+} from "./dom.js";
 import { getMethodOccurrences, highlightLine } from "./code-model.js";
 
 function getScenarioLineIndices(fileName, step = getActiveScenarioStep()) {
@@ -99,8 +108,44 @@ export function renderCode() {
   }).join("");
 }
 
+export function renderScenarioOutline() {
+  const scenario = getActiveScenario();
+  const isVisible = scenarioState.isOpen && Boolean(scenario);
+
+  scenarioOutlineEl.hidden = !isVisible;
+
+  if (!isVisible) {
+    scenarioOutlineTitleEl.textContent = "";
+    scenarioStepListEl.innerHTML = "";
+    return;
+  }
+
+  scenarioOutlineTitleEl.textContent = scenario.title;
+  scenarioStepListEl.innerHTML = scenario.steps.map((step, index) => {
+    const statusClass = [
+      "scenario-step-item",
+      index === scenarioState.stepIndex ? "is-current" : "",
+      index < scenarioState.stepIndex ? "is-completed" : ""
+    ].filter(Boolean).join(" ");
+    const label = step.label || step.caption || `Step ${index + 1}`;
+
+    return `
+      <button
+        class="${statusClass}"
+        type="button"
+        data-action="scenario-step"
+        data-step-index="${index}"
+      >
+        <span class="scenario-step-number">${index + 1}</span>
+        <span class="scenario-step-label">${label}</span>
+      </button>
+    `;
+  }).join("");
+}
+
 export function render() {
   renderSidebar();
   renderTabs();
   renderCode();
+  renderScenarioOutline();
 }

@@ -1,4 +1,5 @@
-import { CODE_DATA, SCENARIOS } from "./data.js";
+import { CODE_DATA } from "./code-data.js";
+import { SCENARIOS } from "./scenario-data.js";
 import { state, navigationHistory, scenarioState, getActiveScenario } from "./state.js";
 import {
   searchEl,
@@ -203,6 +204,10 @@ function setScenarioStep(stepIndex) {
   focusScenarioStep(step);
 }
 
+function jumpToScenarioStep(stepIndex) {
+  setScenarioStep(Number(stepIndex));
+}
+
 function goToFirstScenarioStep() {
   scenarioState.stepIndex = 0;
   setScenarioStep(0);
@@ -270,6 +275,10 @@ document.body.addEventListener("click", (event) => {
 
     if (action === "method") {
       jumpToMethod(fileName, actionTarget.dataset.methodName);
+    }
+
+    if (action === "scenario-step") {
+      jumpToScenarioStep(actionTarget.dataset.stepIndex);
     }
 
     return;

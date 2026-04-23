@@ -280,6 +280,12 @@ input {
   background: var(--panel);
 }
 
+.content-area {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
 .tab-button {
   display: flex;
   align-items: center;
@@ -296,6 +302,109 @@ input {
   flex: 1;
   overflow: auto;
   position: relative;
+  min-width: 0;
+}
+
+.scenario-outline {
+  width: 280px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(22, 27, 34, 0.98), rgba(13, 17, 23, 0.94));
+  padding: 14px 12px;
+  overflow: auto;
+}
+
+.scenario-outline[hidden] {
+  display: none;
+}
+
+.scenario-outline-header {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.scenario-outline-title {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-bottom: 12px;
+}
+
+.scenario-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scenario-step-item {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid rgba(48, 54, 61, 0.9);
+  background: rgba(22, 27, 34, 0.72);
+  color: var(--muted);
+  border-radius: 14px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
+  min-width: 0;
+}
+
+.scenario-step-item:hover {
+  background: rgba(33, 38, 45, 0.92);
+  border-color: rgba(88, 166, 255, 0.28);
+}
+
+.scenario-step-item.is-current {
+  border-color: rgba(88, 166, 255, 0.5);
+  background: rgba(56, 139, 253, 0.14);
+  color: var(--text);
+  transform: translateX(-2px);
+}
+
+.scenario-step-item.is-completed {
+  border-color: rgba(63, 185, 80, 0.24);
+  color: #b8c2cc;
+}
+
+.scenario-step-number {
+  min-width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(110, 118, 129, 0.16);
+  color: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.scenario-step-item.is-current .scenario-step-number {
+  background: rgba(88, 166, 255, 0.24);
+  color: #dbeafe;
+}
+
+.scenario-step-item.is-completed .scenario-step-number {
+  background: rgba(63, 185, 80, 0.16);
+  color: #d2f7d8;
+}
+
+.scenario-step-label {
+  display: block;
+  line-height: 1.45;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .toast {
@@ -463,7 +572,18 @@ input {
     min-width: 0;
   }
 
+  .content-area {
+    flex-direction: column;
+  }
+
   .scenario-select {
     width: 100%;
+  }
+
+  .scenario-outline {
+    width: 100%;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    max-height: 34vh;
   }
 }

@@ -1,4 +1,4 @@
-import { SCENARIOS } from "./data.js";
+import { SCENARIOS } from "./scenario-data.js";
 
 export const state = {
   activeFile: "HikariDataSource.java",

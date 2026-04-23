@@ -15,3 +15,6 @@ export const scenarioPrevEl = document.getElementById("scenario-prev");
 export const scenarioNextEl = document.getElementById("scenario-next");
 export const scenarioHeadingEl = document.getElementById("scenario-heading");
 export const scenarioCaptionEl = document.getElementById("scenario-caption");
+export const scenarioOutlineEl = document.getElementById("scenario-outline");
+export const scenarioOutlineTitleEl = document.getElementById("scenario-outline-title");
+export const scenarioStepListEl = document.getElementById("scenario-step-list");
