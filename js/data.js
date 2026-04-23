@@ -482,13 +482,13 @@ export const SCENARIOS = [
       {
         file: "HikariPool.java",
         lineMatch: "return getConnection(connectionTimeout);",
-        caption: "내부 오버로드 getConnection(long hardTimeout) 호출로 흐름이 이어집니다.",
+        caption: "내부 오버로딩 메서드 getConnection(long hardTimeout) 호출로 흐름이 이어집니다.",
         delay: 1400
       },
       {
         file: "HikariPool.java",
         anchor: "hp-getconn-2",
-        caption: "실제 풀 대기와 커넥션 획득 로직은 두 번째 getConnection(long)에서 처리됩니다.",
+        caption: "실제 풀 대기와 커넥션 획득 로직은 두 번째 getConnection(long hardTimeout)에서 처리됩니다.",
         delay: 1600
       },
       {
@@ -500,44 +500,77 @@ export const SCENARIOS = [
       {
         file: "ConcurrentBag.java",
         anchor: "cb-borrow",
-        caption: "ConcurrentBag.borrow()가 스레드 로컬 캐시, sharedList, handoffQueue 순으로 탐색을 시작합니다.",
+        caption: "ConcurrentBag.borrow()가 threadLocalList, sharedList, handoffQueue 순으로 커넥션 탐색을 시작합니다.",
         delay: 1600
       },
       {
         file: "ConcurrentBag.java",
         lineMatch: "final var list = threadLocalList.get();",
-        caption: "가장 먼저 현재 스레드 전용 캐시를 확인합니다.",
+        caption: "가장 먼저 threadLocalList(캐시)에 있는 커넥션 목록을 가져옵니다.",
         delay: 1200
       },
       {
         file: "ConcurrentBag.java",
-        lineMatch: "for (T bagEntry : sharedList) {",
-        caption: "캐시에 없으면 sharedList를 순회하면서 사용할 수 있는 엔트리를 찾습니다.",
-        delay: 1400
-      },
-      {
-        file: "ConcurrentBag.java",
-        lineMatch: "listener.addBagItem(waiting);",
-        caption: "그래도 못 찾으면 listener에 새 엔트리 추가를 요청하고 handoffQueue 대기로 넘어갑니다.",
-        delay: 1600
+        lineMatch: "final var entry = list.remove(i);",
+        caption: "캐시에 커넥션이 있다면 해당 커넥션을 제거하며 가져옵니다.",
+        delay: 1200
       },
       {
         file: "ConcurrentBag.java",
         lineMatch: "if (bagEntry != null && bagEntry.compareAndSet(STATE_NOT_IN_USE, STATE_IN_USE)) {",
-        caption: "사용 가능한 엔트리를 찾으면 compareAndSet()으로 상태를 IN_USE로 바꾸며 점유를 확정합니다.",
+        caption: "가져온 커넥션이 비어 있지 않고 CAS를 통해 해당 PoolEntry의 점유에 성공하면???",
         delay: 1500
       },
       {
-        file: "PoolEntry.java",
-        anchor: "pe-compareandset",
-        caption: "이 compareAndSet()은 실제로 PoolEntry의 원자적 상태 전이 메서드를 호출합니다.",
+        file: "ConcurrentBag.java",
+        lineMatch: "return bagEntry;",
+        caption: "해당 커넥션(PoolEntry)을 바로 반환하고 borrow()는 종료됩니다.",
+        lineMatchOccurrence: 1,
+        delay: 1400
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "for (T bagEntry : sharedList) {",
+        caption: "만약 캐시에서 찾지 못한 경우 다음으로 sharedList를 순회합니다.",
+        delay: 1400
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "if (bagEntry.compareAndSet(STATE_NOT_IN_USE, STATE_IN_USE)) {",
+        caption: "순회하며 커넥션들에 대해서 CAS를 통해 점유를 성공하면???",
         delay: 1500
       },
       {
-        file: "PoolEntry.java",
-        lineMatch: "return stateUpdater.compareAndSet(this, expect, update);",
-        caption: "AtomicIntegerFieldUpdater를 통해 PoolEntry 상태가 원자적으로 바뀝니다.",
+        file: "ConcurrentBag.java",
+        lineMatch: "return bagEntry;",
+        caption: "해당 커넥션(PoolEntry)을 바로 반환하고 borrow()는 종료됩니다.",
+        lineMatchOccurrence: 2,
         delay: 1500
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "listener.addBagItem(waiting);",
+        caption: "threadLocalList, sharedList 모두에서 커넥션 점유에 실패하면, 현재 사용 가능한 커넥션이 없는 상황입니다.\n따라서 listener에 새 커넥션 추가를 요청하고 handoffQueue 대기로 넘어갑니다.",
+        delay: 1600
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "final T bagEntry = handoffQueue.poll(timeout, NANOSECONDS);",
+        caption: "handoffQueue에서 timeout만큼 대기하며 커넥션을 가져옵니다.",
+        delay: 1700
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "if (bagEntry == null || bagEntry.compareAndSet(STATE_NOT_IN_USE, STATE_IN_USE)) {",
+        caption: "가져온 커넥션이 null이 아니고 CAS를 통해 점유에 성공하면???",
+        delay: 1700
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "return bagEntry;",
+        caption: "해당 커넥션(PoolEntry)을 바로 반환하고 borrow()는 종료됩니다.",
+        lineMatchOccurrence: 3,
+        delay: 1700
       },
       {
         file: "HikariPool.java",
@@ -548,13 +581,13 @@ export const SCENARIOS = [
       {
         file: "HikariPool.java",
         lineMatch: "if (poolEntry.isMarkedEvicted() || (elapsedMillis(poolEntry.lastAccessed, now) > aliveBypassWindowMs && isConnectionDead(poolEntry.connection))) {",
-        caption: "그다음 빌려온 PoolEntry가 축출 대상이거나 죽은 커넥션인지 검사합니다.",
+        caption: "그다음 빌려온 PoolEntry가 사용 가능한지 검사합니다.",
         delay: 1600
       },
       {
         file: "HikariPool.java",
         lineMatch: "metricsTracker.recordBorrowStats(poolEntry, startTime);",
-        caption: "정상 엔트리면 borrow 통계를 기록하고 요청 경계를 시작할 준비를 합니다.",
+        caption: "정상이라면 borrow 통계를 기록하고 하며 커넥션 반환 준비를 합니다.",
         delay: 1300
       },
       {
@@ -572,7 +605,7 @@ export const SCENARIOS = [
       {
         file: "HikariDataSource.java",
         anchor: "hds-getconn",
-        caption: "이렇게 요청 1회가 끝나면 호출자는 풀에서 빌린 Connection 프록시를 얻게 됩니다.",
+        caption: "이렇게 호출한 쪽에서는 Connection 프록시를 얻게 됩니다.",
         delay: 1800
       }
     ]

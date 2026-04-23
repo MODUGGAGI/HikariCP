@@ -8,8 +8,20 @@ function getScenarioLineIndices(fileName, step = getActiveScenarioStep()) {
     return [];
   }
 
+  if (step.lineMatch) {
+    const matchedIndices = CODE_DATA[fileName].code
+      .split("\n")
+      .flatMap((line, lineIndex) => line.includes(step.lineMatch) ? [lineIndex] : []);
+
+    if (step.lineMatchOccurrence) {
+      const targetIndex = matchedIndices[step.lineMatchOccurrence - 1];
+      return targetIndex === undefined ? [] : [targetIndex];
+    }
+
+    return matchedIndices;
+  }
+
   const matches = []
-    .concat(step.lineMatch || [])
     .concat(step.lineMatches || [])
     .filter(Boolean);
 
