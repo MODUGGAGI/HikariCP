@@ -4,7 +4,7 @@
   "description": "Static GitHub Pages site for the HikariCP explorer",
   "private": true,
   "scripts": {
-    "build:pages": "mkdir -p dist && cp index.html index.js styles.css dist/ && rm -rf dist/image && cp -R image dist/ && touch dist/.nojekyll",
-    "serve": "python3 -m http.server 4173"
+    "build:pages": "rm -rf dist && mkdir -p dist && cp -R app/. dist/ && touch dist/.nojekyll",
+    "serve": "python3 -m http.server 4173 -d app"
   }
 }
