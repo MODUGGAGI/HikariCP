@@ -120,46 +120,63 @@ export function highlightLine(line, fileName, lineIndex) {
   }
 
   const classNames = Object.keys(CODE_DATA).map((name) => name.replace(".java", ""));
-  const masterRegex = /("(?:\\.|[^\\"])*")|(@\w+)|(\b\w+\b)(?=\s*\()|(\b\w+\b)|([^\w\s]+)|(\s+)/g;
+  const tokenRegex = /(@\w+)|(\b\w+\b)(?=\s*\()|(\b\w+\b)|([^\w\s]+)|(\s+)/g;
 
-  const formattedCode = codePart.replace(
-    masterRegex,
-    (match, string, annotation, methodWord, word, operator, space, offset) => {
-      if (string) return `<span class="string">${escapeHtml(string)}</span>`;
-      if (annotation) return `<span class="anno">${escapeHtml(annotation)}</span>`;
-      if (methodWord) {
-        if (SYMBOL_LINKS[methodWord]) {
-          const { file, anchor } = SYMBOL_LINKS[methodWord];
-          return renderLink("class-link", methodWord, file, anchor);
-        }
-        if (classNames.includes(methodWord)) {
-          return renderLink("class-link", methodWord, `${methodWord}.java`);
-        }
+  function formatCodeSegment(segment, baseOffset) {
+    return segment.replace(
+      tokenRegex,
+      (match, annotation, methodWord, word, operator, space, offset) => {
+        const absoluteOffset = baseOffset + offset;
+        if (annotation) return `<span class="anno">${escapeHtml(annotation)}</span>`;
+        if (methodWord) {
+          if (SYMBOL_LINKS[methodWord]) {
+            const { file, anchor } = SYMBOL_LINKS[methodWord];
+            return renderLink("class-link", methodWord, file, anchor);
+          }
+          if (classNames.includes(methodWord)) {
+            return renderLink("class-link", methodWord, `${methodWord}.java`);
+          }
 
-        const methodTarget = resolveMethodTarget(fileName, codePart, lineIndex, methodWord, offset);
-        if (methodTarget) {
-          return renderLink("method-link", methodWord, methodTarget.file, methodTarget.anchor);
-        }
+          const methodTarget = resolveMethodTarget(fileName, codePart, lineIndex, methodWord, absoluteOffset);
+          if (methodTarget) {
+            return renderLink("method-link", methodWord, methodTarget.file, methodTarget.anchor);
+          }
 
-        if (/^[A-Z]/.test(methodWord)) return `<span class="type">${methodWord}</span>`;
-        return methodWord;
+          if (/^[A-Z]/.test(methodWord)) return `<span class="type">${methodWord}</span>`;
+          return methodWord;
+        }
+        if (word) {
+          if (KEYWORDS.has(word)) return `<span class="kw">${word}</span>`;
+          if (SYMBOL_LINKS[word]) {
+            const { file, anchor } = SYMBOL_LINKS[word];
+            return renderLink("class-link", word, file, anchor);
+          }
+          if (classNames.includes(word)) {
+            return renderLink("class-link", word, `${word}.java`);
+          }
+          if (/^[A-Z]/.test(word)) return `<span class="type">${word}</span>`;
+          return word;
+        }
+        if (operator) return `<span class="op">${escapeHtml(operator)}</span>`;
+        return space || match;
       }
-      if (word) {
-        if (KEYWORDS.has(word)) return `<span class="kw">${word}</span>`;
-        if (SYMBOL_LINKS[word]) {
-          const { file, anchor } = SYMBOL_LINKS[word];
-          return renderLink("class-link", word, file, anchor);
-        }
-        if (classNames.includes(word)) {
-          return renderLink("class-link", word, `${word}.java`);
-        }
-        if (/^[A-Z]/.test(word)) return `<span class="type">${word}</span>`;
-        return word;
-      }
-      if (operator) return `<span class="op">${escapeHtml(operator)}</span>`;
-      return space || match;
-    }
-  );
+    );
+  }
+
+  const stringRegex = /"(?:\\.|[^"\\])*"/g;
+  let formattedCode = "";
+  let cursor = 0;
+
+  for (const match of codePart.matchAll(stringRegex)) {
+    const stringStart = match.index ?? 0;
+    const stringValue = match[0];
+
+    formattedCode += formatCodeSegment(codePart.slice(cursor, stringStart), cursor);
+    formattedCode += `<span class="string">${escapeHtml(stringValue)}</span>`;
+    cursor = stringStart + stringValue.length;
+  }
+
+  formattedCode += formatCodeSegment(codePart.slice(cursor), cursor);
 
   return formattedCode + commentPart;
 }

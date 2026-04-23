@@ -304,6 +304,49 @@ export const CODE_DATA = {
       { name: "requite", id: "cb-requite" }
     ]
   },
+  "HikariProxyConnection.java": {
+    id: "hpc",
+    description: "애플리케이션에 반환되는 커넥션 프록시로, close() 시 실제 반납 절차를 시작합니다.",
+    code: `public final class HikariProxyConnection extends ProxyConnection implements Wrapper, AutoCloseable, Connection {
+    
+   @Override
+   public final void close() throws SQLException
+   {
+      // Closing statements can cause connection eviction, so this must run before the conditional below
+      closeStatements();
+
+      if (delegate != ClosedConnection.CLOSED_CONNECTION) {
+         leakTask.cancel();
+
+         try {
+            if (isCommitStateDirty && !isAutoCommit) {
+               delegate.rollback();
+               LOGGER.debug("{} - Executed rollback on connection {} due to dirty commit state on close().", poolEntry.getPoolName(), delegate);
+            }
+
+            if (dirtyBits != 0) {
+               poolEntry.resetConnectionState(this, dirtyBits);
+            }
+
+            delegate.clearWarnings();
+         }
+         catch (SQLException e) {
+            // when connections are aborted, exceptions are often thrown that should not reach the application
+            if (!poolEntry.isMarkedEvicted()) {
+               throw checkException(e);
+            }
+         }
+         finally {
+            delegate = ClosedConnection.CLOSED_CONNECTION;
+            poolEntry.recycle();
+         }
+      }
+   }
+}`,
+    methods: [
+      { name: "close", id: "hpc-close" }
+    ]
+  },
   "PoolEntry.java": {
     id: "pe",
     description: "커넥션 객체와 그 상태를 관리하는 핵심 래퍼 클래스입니다.",
@@ -376,6 +419,7 @@ export const FILE_PRIMARY_TYPES = {
   "HikariDataSource.java": "HikariDataSource",
   "HikariPool.java": "HikariPool",
   "ConcurrentBag.java": "ConcurrentBag",
+  "HikariProxyConnection.java": "HikariProxyConnection",
   "PoolEntry.java": "PoolEntry"
 };
 
@@ -393,6 +437,9 @@ export const TYPE_METHOD_LINKS = {
   ConcurrentBag: {
     borrow: { file: "ConcurrentBag.java", anchor: "cb-borrow" },
     requite: { file: "ConcurrentBag.java", anchor: "cb-requite" }
+  },
+  HikariProxyConnection: {
+    close: { file: "HikariProxyConnection.java", anchor: "hpc-close" }
   },
   PoolEntry: {
     recycle: { file: "PoolEntry.java", anchor: "pe-recycle" },
@@ -415,12 +462,18 @@ export const TYPE_MEMBER_TYPES = {
   HikariPool: {
     connectionBag: "ConcurrentBag"
   },
+  HikariProxyConnection: {
+    poolEntry: "PoolEntry"
+  },
   PoolEntry: {
     hikariPool: "HikariPool"
   }
 };
 
 export const MANUAL_TYPE_CONTEXTS = {
+  "HikariProxyConnection.java": {
+    poolEntry: "PoolEntry"
+  },
   "ConcurrentBag.java": {
     bagEntry: "PoolEntry",
     listener: "HikariPool"
@@ -607,6 +660,108 @@ export const SCENARIOS = [
         anchor: "hds-getconn",
         caption: "이렇게 호출한 쪽에서는 Connection 프록시를 얻게 됩니다.",
         delay: 1800
+      }
+    ]
+  },
+  {
+    id: "connection-return",
+    title: "커넥션 반납 시작",
+    description: "HikariProxyConnection.close()에서 시작해 PoolEntry.recycle(), HikariPool.recycle(), ConcurrentBag.requite()를 거쳐 캐시에 다시 넣는 대표 반납 흐름을 따라갑니다.",
+    steps: [
+      {
+        file: "HikariProxyConnection.java",
+        anchor: "hpc-close",
+        caption: "커넥션 반납은 애플리케이션이 HikariProxyConnection.close()를 호출하면서 시작됩니다.",
+        delay: 1400
+      },
+      {
+        file: "HikariProxyConnection.java",
+        lineMatches: [
+          "closeStatements();",
+          "delegate.rollback();",
+          "poolEntry.resetConnectionState(this, dirtyBits);",
+          "delegate.clearWarnings();"
+        ],
+        caption: "poolEntry.recycle()에 들어가기 전에는 Statement, 트랜잭션 상태, 커넥션 상태를 한 번 정리합니다.",
+        delay: 1700
+      },
+      {
+        file: "HikariProxyConnection.java",
+        lineMatch: "poolEntry.recycle();",
+        caption: "정리 후 PoolEntry.recycle()을 호출해 풀 반납 절차를 본격적으로 시작합니다.",
+        delay: 1600
+      },
+      {
+        file: "PoolEntry.java",
+        anchor: "pe-recycle",
+        caption: "PoolEntry.recycle()입니다.",
+        delay: 1400
+      },
+      {
+        file: "PoolEntry.java",
+        lineMatch: "if (connection != null) {",
+        caption: "먼저 커넥션이 살아 있는지 확인합니다.",
+        delay: 1200
+      },
+      {
+        file: "PoolEntry.java",
+        lineMatch: "hikariPool.recycle(this);",
+        caption: "그 후 자신을 관리하는 HikariPool에 반납을 위임합니다.",
+        delay: 1500
+      },
+      {
+        file: "HikariPool.java",
+        anchor: "hp-recycle",
+        caption: "HikariPool.recycle()은 반납된 PoolEntry를 다시 풀에 넣을지, 폐기할지 결정합니다.",
+        delay: 1500
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "if (poolEntry.isMarkedEvicted()) {",
+        caption: "evict 대상일 경우???",
+        delay: 1400
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "closeConnection(poolEntry, EVICTED_CONNECTION_MESSAGE);",
+        caption: "커넥션을 종료합니다.",
+        delay: 1400
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "connectionBag.requite(poolEntry);",
+        caption: "종료 대상이 아닐 경우, ConcurrentBag.requite()를 통해 커넥션을 다시 사용 가능 상태로 돌려놓습니다.",
+        delay: 1500
+      },
+      {
+        file: "ConcurrentBag.java",
+        anchor: "cb-requite",
+        caption: "ConcurrentBag.requite()는 PoolEntry를 STATE_NOT_IN_USE로 상태로 되돌리고 반납 위치를 결정합니다.",
+        delay: 1500
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "bagEntry.setState(STATE_NOT_IN_USE);",
+        caption: "먼저 PoolEntry 상태를 다시 STATE_NOT_IN_USE로 바꿉니다.",
+        delay: 1400
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "if (bagEntry.getState() != STATE_NOT_IN_USE || handoffQueue.offer(bagEntry)) {",
+        caption: "1. PoolEntry 상태가 이미 STATE_NOT_IN_USE가 아니면 바로 종료합니다.\n2. 아직 STATE_NOT_IN_USE 상태이고 handoffQueue로 즉시 전달에 성공해도 바로 종료합니다.",
+        delay: 1600
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "final var threadLocalEntries = this.threadLocalList.get();",
+        caption: "커넥션 대기자가 없거나 handoffQueue로 넘기는 데 실패하면, 스레드 캐시(threadLocalList)에 넣는 것을 시도합니다.",
+        delay: 1500
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "threadLocalEntries.add(useWeakThreadLocals ? new WeakReference<>(bagEntry) : bagEntry);",
+        caption: "현재 캐시의 크기가 16보다 작으면 PoolEntry를 threadLocalList에 추가합니다.",
+        delay: 1600
       }
     ]
   }

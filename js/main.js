@@ -157,9 +157,12 @@ function updateScenarioControls() {
   const scenario = getActiveScenario();
   const stepCount = scenario?.steps.length || 0;
   const currentStep = scenario?.steps[scenarioState.stepIndex] || null;
+  const isScenarioOpen = scenarioState.isOpen;
 
-  scenarioPanelEl.hidden = !scenarioState.isOpen;
-  scenarioToggleEl.textContent = scenarioState.isOpen ? "Scenario On" : "Scenario";
+  scenarioPanelEl.hidden = !isScenarioOpen;
+  scenarioToggleEl.textContent = isScenarioOpen ? "Scenario On" : "Scenario Off";
+  scenarioToggleEl.classList.toggle("is-on", isScenarioOpen);
+  scenarioToggleEl.classList.toggle("is-off", !isScenarioOpen);
 
   scenarioPrevEl.disabled = stepCount === 0 || scenarioState.stepIndex === 0;
   scenarioNextEl.disabled = stepCount === 0 || scenarioState.stepIndex >= stepCount - 1;
