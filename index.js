@@ -474,6 +474,19 @@ function renderLink(className, label, fileName, anchor) {
 }
 
 function isMethodDeclaration(line, methodName) {
+  const trimmedLine = line.trim();
+  if (!trimmedLine.includes(`${methodName}(`)) {
+    return false;
+  }
+
+  if (/^(return|if|for|while|switch|catch|throw|new)\b/.test(trimmedLine)) {
+    return false;
+  }
+
+  if (trimmedLine.includes(`.${methodName}(`)) {
+    return false;
+  }
+
   const declarationPattern = new RegExp(
     `^\\s*(?:@\\w+\\s+)?(?:public|private|protected)?(?:\\s+(?:static|final|synchronized|abstract|default|native|strictfp))*\\s*(?:<[\\w\\s,?]+>\\s+)?(?:[\\w.<>\\[\\],?]+\\s+)+${methodName}\\s*\\(`
   );
@@ -503,7 +516,7 @@ function resolveExpressionType(fileName, expression) {
   return currentType;
 }
 
-function resolveMethodTarget(fileName, line, methodName, offset) {
+function resolveMethodTarget(fileName, line, lineIndex, methodName, offset) {
   const receiverExpression = findReceiverExpression(line.slice(0, offset));
   if (receiverExpression) {
     const receiverType = resolveExpressionType(fileName, receiverExpression);
@@ -512,6 +525,13 @@ function resolveMethodTarget(fileName, line, methodName, offset) {
 
   if (isMethodDeclaration(line, methodName)) {
     return null;
+  }
+
+  const nextLocalOccurrence = getMethodOccurrences(fileName).find((item) =>
+    item.name === methodName && item.lineIndex > lineIndex
+  );
+  if (nextLocalOccurrence) {
+    return { file: fileName, anchor: nextLocalOccurrence.anchor };
   }
 
   const currentType = FILE_PRIMARY_TYPES[fileName];
@@ -610,7 +630,7 @@ function navigateToFile(fileName, options = {}) {
   });
 }
 
-function highlightLine(line, fileName) {
+function highlightLine(line, fileName, lineIndex) {
   let codePart = line;
   let commentPart = "";
   const commentIdx = line.indexOf("//");
@@ -639,7 +659,7 @@ function highlightLine(line, fileName) {
           return renderLink("class-link", methodWord, `${methodWord}.java`);
         }
 
-        const methodTarget = resolveMethodTarget(fileName, codePart, methodWord, offset);
+        const methodTarget = resolveMethodTarget(fileName, codePart, lineIndex, methodWord, offset);
         if (methodTarget) {
           return renderLink("method-link", methodWord, methodTarget.file, methodTarget.anchor);
         }
@@ -793,7 +813,7 @@ function renderCode() {
     return `
       <div class="code-line ${lineClass}" ${lineId ? `id="${lineId}"` : ""}>
         <span class="line-number">${idx + 1}</span>
-        <span class="line-code">${highlightLine(line, state.activeFile)}</span>
+        <span class="line-code">${highlightLine(line, state.activeFile, idx)}</span>
       </div>
     `;
   }).join("");
