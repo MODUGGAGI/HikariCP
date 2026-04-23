@@ -518,6 +518,28 @@ function resolveMethodTarget(fileName, line, methodName, offset) {
   return TYPE_METHOD_LINKS[currentType]?.[methodName] || null;
 }
 
+function getMethodOccurrences(fileName) {
+  const file = CODE_DATA[fileName];
+  const counts = {};
+
+  return file.code.split("\n").flatMap((line, lineIndex) =>
+    file.methods.flatMap((method) => {
+      if (!isMethodDeclaration(line, method.name)) {
+        return [];
+      }
+
+      counts[method.name] = (counts[method.name] || 0) + 1;
+      const occurrenceIndex = counts[method.name];
+
+      return [{
+        name: method.name,
+        lineIndex,
+        anchor: occurrenceIndex === 1 ? method.id : `${method.id}-${occurrenceIndex}`
+      }];
+    })
+  );
+}
+
 function getCurrentLocation() {
   return {
     file: state.activeFile,
@@ -688,6 +710,32 @@ function goForward() {
   updateHistoryButtons();
 }
 
+function jumpToMethod(fileName, methodName) {
+  const performJump = () => {
+    const occurrences = getMethodOccurrences(fileName).filter((item) => item.name === methodName);
+    if (occurrences.length === 0) {
+      return;
+    }
+
+    const nextOccurrence = occurrences.find((item) => {
+      const target = document.getElementById(item.anchor);
+      return target && target.offsetTop > viewerEl.scrollTop + 4;
+    }) || occurrences[0];
+
+    navigateToFile(fileName, { anchor: nextOccurrence.anchor, preserveScroll: true });
+  };
+
+  pushHistoryEntry(getCurrentLocation());
+
+  if (state.activeFile !== fileName) {
+    setActiveFile(fileName);
+    requestAnimationFrame(performJump);
+    return;
+  }
+
+  performJump();
+}
+
 function renderSidebar() {
   const files = Object.keys(CODE_DATA).filter((name) =>
     name.toLowerCase().includes(state.searchTerm.toLowerCase())
@@ -707,7 +755,7 @@ function renderSidebar() {
         ${isActive ? `
           <div class="method-list">
             ${file.methods.map((method) => `
-              <button class="method-button" data-action="method" data-file="${fileName}" data-method="${method.id}">
+              <button class="method-button" data-action="method" data-file="${fileName}" data-method-name="${method.name}">
                 ◦ ${method.name}()
               </button>
             `).join("")}
@@ -730,14 +778,16 @@ function renderTabs() {
 function renderCode() {
   const file = CODE_DATA[state.activeFile];
   const lines = file.code.split("\n");
+  const methodOccurrences = getMethodOccurrences(state.activeFile);
+  const methodOccurrenceByLine = new Map(methodOccurrences.map((item) => [item.lineIndex, item]));
 
   summaryEl.textContent = file.description;
   footerPathEl.textContent = `src/main/java/com/zaxxer/hikari/${state.activeFile}`;
 
   codeEl.innerHTML = lines.map((line, idx) => {
-    const method = file.methods.find((item) => line.includes(` ${item.name}(`));
+    const method = methodOccurrenceByLine.get(idx);
     const anchor = file.anchors?.find((item) => line.includes(item.match));
-    const lineId = method?.id || anchor?.id || "";
+    const lineId = method?.anchor || anchor?.id || "";
     const lineClass = method ? "method" : "";
 
     return `
@@ -766,7 +816,7 @@ document.body.addEventListener("click", (event) => {
     }
 
     if (action === "method") {
-      jumpToAnchor(fileName, actionTarget.dataset.method);
+      jumpToMethod(fileName, actionTarget.dataset.methodName);
     }
 
     return;
