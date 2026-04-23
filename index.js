@@ -293,7 +293,12 @@ const CODE_DATA = {
       }
    }
 }`,
-    anchors: [{ match: "public interface IConcurrentBagEntry", id: "cb-iconcurrentbagentry" }],
+    anchors: [
+      { match: "public interface IConcurrentBagEntry", id: "cb-iconcurrentbagentry" },
+      { match: "boolean compareAndSet(int expectState, int newState);", id: "cb-entry-compareandset" },
+      { match: "void setState(int newState);", id: "cb-entry-setstate" },
+      { match: "int getState();", id: "cb-entry-getstate" }
+    ],
     methods: [
       { name: "borrow", id: "cb-borrow" },
       { name: "requite", id: "cb-requite" }
@@ -364,6 +369,77 @@ const SYMBOL_LINKS = {
     anchor: "cb-iconcurrentbagentry"
   }
 };
+const FILE_PRIMARY_TYPES = {
+  "HikariDataSource.java": "HikariDataSource",
+  "HikariPool.java": "HikariPool",
+  "ConcurrentBag.java": "ConcurrentBag",
+  "PoolEntry.java": "PoolEntry"
+};
+const TYPE_METHOD_LINKS = {
+  HikariDataSource: {
+    getConnection: { file: "HikariDataSource.java", anchor: "hds-getconn" }
+  },
+  HikariPool: {
+    getConnection: { file: "HikariPool.java", anchor: "hp-getconn" },
+    recycle: { file: "HikariPool.java", anchor: "hp-recycle" },
+    addBagItem: { file: "HikariPool.java", anchor: "hp-addbagitem" },
+    checkFailFast: { file: "HikariPool.java", anchor: "hp-checkfailfast" },
+    fillPool: { file: "HikariPool.java", anchor: "hp-fillpool" }
+  },
+  ConcurrentBag: {
+    borrow: { file: "ConcurrentBag.java", anchor: "cb-borrow" },
+    requite: { file: "ConcurrentBag.java", anchor: "cb-requite" }
+  },
+  PoolEntry: {
+    recycle: { file: "PoolEntry.java", anchor: "pe-recycle" },
+    compareAndSet: { file: "PoolEntry.java", anchor: "pe-compareandset" },
+    getState: { file: "PoolEntry.java", anchor: "pe-getstate" },
+    setState: { file: "PoolEntry.java", anchor: "pe-setstate" }
+  },
+  IConcurrentBagEntry: {
+    compareAndSet: { file: "ConcurrentBag.java", anchor: "cb-entry-compareandset" },
+    getState: { file: "ConcurrentBag.java", anchor: "cb-entry-getstate" },
+    setState: { file: "ConcurrentBag.java", anchor: "cb-entry-setstate" }
+  }
+};
+const TYPE_MEMBER_TYPES = {
+  HikariDataSource: {
+    fastPathPool: "HikariPool",
+    pool: "HikariPool"
+  },
+  HikariPool: {
+    connectionBag: "ConcurrentBag"
+  },
+  PoolEntry: {
+    hikariPool: "HikariPool"
+  }
+};
+const MANUAL_TYPE_CONTEXTS = {
+  "ConcurrentBag.java": {
+    bagEntry: "PoolEntry",
+    listener: "HikariPool"
+  }
+};
+const KNOWN_TYPES = [...Object.values(FILE_PRIMARY_TYPES), "IConcurrentBagEntry"];
+const TYPE_CONTEXTS = Object.fromEntries(
+  Object.entries(CODE_DATA).map(([fileName, file]) => {
+    const context = {
+      this: FILE_PRIMARY_TYPES[fileName],
+      ...(MANUAL_TYPE_CONTEXTS[fileName] || {})
+    };
+    const declarationRegex = new RegExp(
+      `\\b(${KNOWN_TYPES.join("|")})(?:<[^>]+>)?\\s+(\\w+)\\b`,
+      "g"
+    );
+
+    for (const match of file.code.matchAll(declarationRegex)) {
+      const [, typeName, variableName] = match;
+      context[variableName] = typeName;
+    }
+
+    return [fileName, context];
+  })
+);
 
 const state = {
   activeFile: "HikariDataSource.java",
@@ -376,6 +452,14 @@ const summaryEl = document.getElementById("summary");
 const codeEl = document.getElementById("code");
 const footerPathEl = document.getElementById("footer-path");
 const searchEl = document.getElementById("search");
+const viewerEl = document.getElementById("viewer");
+const historyBackEl = document.getElementById("history-back");
+const historyForwardEl = document.getElementById("history-forward");
+
+const navigationHistory = {
+  backStack: [],
+  forwardStack: []
+};
 
 function escapeHtml(text) {
   return text
@@ -384,7 +468,127 @@ function escapeHtml(text) {
     .replace(/>/g, "&gt;");
 }
 
-function highlightLine(line) {
+function renderLink(className, label, fileName, anchor) {
+  const anchorAttr = anchor ? ` data-anchor="${anchor}"` : "";
+  return `<span class="${className}" data-file="${fileName}"${anchorAttr}>${label}</span>`;
+}
+
+function isMethodDeclaration(line, methodName) {
+  const declarationPattern = new RegExp(
+    `^\\s*(?:@\\w+\\s+)?(?:public|private|protected)?(?:\\s+(?:static|final|synchronized|abstract|default|native|strictfp))*\\s*(?:<[\\w\\s,?]+>\\s+)?(?:[\\w.<>\\[\\],?]+\\s+)+${methodName}\\s*\\(`
+  );
+  return declarationPattern.test(line);
+}
+
+function findReceiverExpression(prefix) {
+  const match = prefix.match(/([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\.\s*$/);
+  return match?.[1] || null;
+}
+
+function resolveExpressionType(fileName, expression) {
+  const parts = expression.split(".");
+  let currentType = TYPE_CONTEXTS[fileName]?.[parts[0]];
+
+  if (!currentType) {
+    return null;
+  }
+
+  for (let index = 1; index < parts.length; index += 1) {
+    currentType = TYPE_MEMBER_TYPES[currentType]?.[parts[index]];
+    if (!currentType) {
+      return null;
+    }
+  }
+
+  return currentType;
+}
+
+function resolveMethodTarget(fileName, line, methodName, offset) {
+  const receiverExpression = findReceiverExpression(line.slice(0, offset));
+  if (receiverExpression) {
+    const receiverType = resolveExpressionType(fileName, receiverExpression);
+    return receiverType ? TYPE_METHOD_LINKS[receiverType]?.[methodName] || null : null;
+  }
+
+  if (isMethodDeclaration(line, methodName)) {
+    return null;
+  }
+
+  const currentType = FILE_PRIMARY_TYPES[fileName];
+  return TYPE_METHOD_LINKS[currentType]?.[methodName] || null;
+}
+
+function getCurrentLocation() {
+  return {
+    file: state.activeFile,
+    scrollTop: viewerEl.scrollTop
+  };
+}
+
+function isSameLocation(left, right) {
+  return left?.file === right?.file && left?.scrollTop === right?.scrollTop;
+}
+
+function updateHistoryButtons() {
+  historyBackEl.disabled = navigationHistory.backStack.length === 0;
+  historyForwardEl.disabled = navigationHistory.forwardStack.length === 0;
+}
+
+function restoreLocation(location) {
+  if (!location || !CODE_DATA[location.file]) {
+    return;
+  }
+
+  setActiveFile(location.file);
+  requestAnimationFrame(() => {
+    viewerEl.scrollTop = location.scrollTop ?? 0;
+  });
+}
+
+function pushHistoryEntry(entry) {
+  const lastEntry = navigationHistory.backStack[navigationHistory.backStack.length - 1];
+  if (!isSameLocation(lastEntry, entry)) {
+    navigationHistory.backStack.push(entry);
+  }
+  navigationHistory.forwardStack = [];
+  updateHistoryButtons();
+}
+
+function navigateToFile(fileName, options = {}) {
+  if (!CODE_DATA[fileName]) {
+    return;
+  }
+
+  const {
+    anchor,
+    preserveScroll = false,
+    pushHistory = false
+  } = options;
+
+  if (pushHistory) {
+    pushHistoryEntry(getCurrentLocation());
+  }
+
+  setActiveFile(fileName);
+  requestAnimationFrame(() => {
+    if (!preserveScroll) {
+      viewerEl.scrollTop = 0;
+    }
+
+    if (anchor) {
+      const target = document.getElementById(anchor);
+      if (!target) {
+        return;
+      }
+
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.classList.add("highlight");
+      window.setTimeout(() => target.classList.remove("highlight"), 1500);
+    }
+  });
+}
+
+function highlightLine(line, fileName) {
   let codePart = line;
   let commentPart = "";
   const commentIdx = line.indexOf("//");
@@ -397,21 +601,38 @@ function highlightLine(line) {
   }
 
   const classNames = Object.keys(CODE_DATA).map((name) => name.replace(".java", ""));
-  const masterRegex = /("(?:\\.|[^\\"])*")|(@\w+)|(\b\w+\b)|([^\w\s]+)|(\s+)/g;
+  const masterRegex = /("(?:\\.|[^\\"])*")|(@\w+)|(\b\w+\b)(?=\s*\()|(\b\w+\b)|([^\w\s]+)|(\s+)/g;
 
   const formattedCode = codePart.replace(
     masterRegex,
-    (match, string, annotation, word, operator, space) => {
+    (match, string, annotation, methodWord, word, operator, space, offset) => {
       if (string) return `<span class="string">${escapeHtml(string)}</span>`;
       if (annotation) return `<span class="anno">${escapeHtml(annotation)}</span>`;
+      if (methodWord) {
+        if (SYMBOL_LINKS[methodWord]) {
+          const { file, anchor } = SYMBOL_LINKS[methodWord];
+          return renderLink("class-link", methodWord, file, anchor);
+        }
+        if (classNames.includes(methodWord)) {
+          return renderLink("class-link", methodWord, `${methodWord}.java`);
+        }
+
+        const methodTarget = resolveMethodTarget(fileName, codePart, methodWord, offset);
+        if (methodTarget) {
+          return renderLink("method-link", methodWord, methodTarget.file, methodTarget.anchor);
+        }
+
+        if (/^[A-Z]/.test(methodWord)) return `<span class="type">${methodWord}</span>`;
+        return methodWord;
+      }
       if (word) {
         if (KEYWORDS.has(word)) return `<span class="kw">${word}</span>`;
         if (SYMBOL_LINKS[word]) {
           const { file, anchor } = SYMBOL_LINKS[word];
-          return `<span class="class-link" data-file="${file}" data-anchor="${anchor}">${word}</span>`;
+          return renderLink("class-link", word, file, anchor);
         }
         if (classNames.includes(word)) {
-          return `<span class="class-link" data-file="${word}.java">${word}</span>`;
+          return renderLink("class-link", word, `${word}.java`);
         }
         if (/^[A-Z]/.test(word)) return `<span class="type">${word}</span>`;
         return word;
@@ -434,18 +655,37 @@ function setActiveFile(fileName) {
 }
 
 function jumpToAnchor(fileName, targetId) {
-  setActiveFile(fileName);
+  navigateToFile(fileName, { anchor: targetId, pushHistory: true });
+}
 
-  requestAnimationFrame(() => {
-    const target = document.getElementById(targetId);
-    if (!target) {
-      return;
-    }
+function goBack() {
+  const previousLocation = navigationHistory.backStack.pop();
+  if (!previousLocation) {
+    return;
+  }
 
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
-    target.classList.add("highlight");
-    window.setTimeout(() => target.classList.remove("highlight"), 1500);
-  });
+  const currentLocation = getCurrentLocation();
+  if (!isSameLocation(currentLocation, previousLocation)) {
+    navigationHistory.forwardStack.push(currentLocation);
+  }
+
+  restoreLocation(previousLocation);
+  updateHistoryButtons();
+}
+
+function goForward() {
+  const nextLocation = navigationHistory.forwardStack.pop();
+  if (!nextLocation) {
+    return;
+  }
+
+  const currentLocation = getCurrentLocation();
+  if (!isSameLocation(currentLocation, nextLocation)) {
+    navigationHistory.backStack.push(currentLocation);
+  }
+
+  restoreLocation(nextLocation);
+  updateHistoryButtons();
 }
 
 function renderSidebar() {
@@ -503,7 +743,7 @@ function renderCode() {
     return `
       <div class="code-line ${lineClass}" ${lineId ? `id="${lineId}"` : ""}>
         <span class="line-number">${idx + 1}</span>
-        <span class="line-code">${highlightLine(line)}</span>
+        <span class="line-code">${highlightLine(line, state.activeFile)}</span>
       </div>
     `;
   }).join("");
@@ -522,7 +762,7 @@ document.body.addEventListener("click", (event) => {
     const fileName = actionTarget.dataset.file;
 
     if (action === "file") {
-      setActiveFile(fileName);
+      navigateToFile(fileName, { pushHistory: true });
     }
 
     if (action === "method") {
@@ -532,16 +772,19 @@ document.body.addEventListener("click", (event) => {
     return;
   }
 
-  const classLink = event.target.closest(".class-link");
-  if (classLink) {
-    if (classLink.dataset.anchor) {
-      jumpToAnchor(classLink.dataset.file, classLink.dataset.anchor);
+  const navLink = event.target.closest(".class-link, .method-link");
+  if (navLink) {
+    if (navLink.dataset.anchor) {
+      jumpToAnchor(navLink.dataset.file, navLink.dataset.anchor);
       return;
     }
 
-    setActiveFile(classLink.dataset.file);
+    navigateToFile(navLink.dataset.file, { pushHistory: true });
   }
 });
+
+historyBackEl.addEventListener("click", goBack);
+historyForwardEl.addEventListener("click", goForward);
 
 searchEl.addEventListener("input", (event) => {
   state.searchTerm = event.target.value;
@@ -549,3 +792,4 @@ searchEl.addEventListener("input", (event) => {
 });
 
 render();
+updateHistoryButtons();

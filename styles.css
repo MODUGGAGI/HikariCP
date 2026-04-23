@@ -147,6 +147,41 @@ input {
   min-width: 0;
 }
 
+.topbar {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(22, 27, 34, 0.98), rgba(13, 17, 23, 0.96));
+}
+
+.history-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-button {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.history-button:hover:not(:disabled) {
+  background: var(--panel-2);
+  border-color: rgba(88, 166, 255, 0.35);
+}
+
+.history-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .tabs {
   height: 44px;
   display: flex;
@@ -271,6 +306,13 @@ input {
   font-weight: 600;
 }
 
+.method-link {
+  color: #7ee787;
+  text-decoration: underline;
+  cursor: pointer;
+  font-weight: 600;
+}
+
 .type {
   color: #a5d6ff;
 }
@@ -302,5 +344,18 @@ input {
     height: 42vh;
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  .topbar {
+    padding: 10px 12px;
+  }
+
+  .history-controls {
+    width: 100%;
+  }
+
+  .history-button {
+    flex: 1;
+    min-width: 0;
   }
 }
