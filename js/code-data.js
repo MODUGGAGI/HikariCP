@@ -305,6 +305,21 @@ export const CODE_DATA = {
       { name: "requite", id: "cb-requite" }
     ]
   },
+  "ProxyConnection.java": {
+    id: "pc",
+    description: "HikariProxyConnection의 상위 클래스로, 실제 JDBC Connection delegate와 PoolEntry 참조를 보관합니다.",
+    code: `public abstract class ProxyConnection implements Connection
+{
+   @SuppressWarnings("WeakerAccess")
+   protected Connection delegate;
+
+   private final PoolEntry poolEntry;
+
+   private boolean isReadOnly;
+   private boolean isAutoCommit;
+}`,
+    methods: []
+  },
   "HikariProxyConnection.java": {
     id: "hpc",
     description: "애플리케이션에 반환되는 커넥션 프록시로, close() 시 실제 반납 절차를 시작합니다.",
@@ -427,6 +442,7 @@ export const FILE_PRIMARY_TYPES = {
   "HikariDataSource.java": "HikariDataSource",
   "HikariPool.java": "HikariPool",
   "ConcurrentBag.java": "ConcurrentBag",
+  "ProxyConnection.java": "ProxyConnection",
   "HikariProxyConnection.java": "HikariProxyConnection",
   "PoolEntry.java": "PoolEntry"
 };
@@ -446,6 +462,7 @@ export const TYPE_METHOD_LINKS = {
     borrow: { file: "ConcurrentBag.java", anchor: "cb-borrow" },
     requite: { file: "ConcurrentBag.java", anchor: "cb-requite" }
   },
+  ProxyConnection: {},
   HikariProxyConnection: {
     close: { file: "HikariProxyConnection.java", anchor: "hpc-close" }
   },
@@ -469,6 +486,9 @@ export const TYPE_MEMBER_TYPES = {
   },
   HikariPool: {
     connectionBag: "ConcurrentBag"
+  },
+  ProxyConnection: {
+    poolEntry: "PoolEntry"
   },
   HikariProxyConnection: {
     poolEntry: "PoolEntry"
