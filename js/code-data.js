@@ -357,8 +357,15 @@ export const CODE_DATA = {
     
    Connection connection;
    long lastAccessed;
+   
+   @SuppressWarnings("FieldCanBeLocal")
    private volatile int state = 0;
+   private volatile boolean evict;
+   
    private final HikariPool hikariPool;
+   
+   private final boolean isReadOnly;
+   private final boolean isAutoCommit;
 
    /**
     * ✅ 자신을 관리하는 HikariPool에 반납 요청
