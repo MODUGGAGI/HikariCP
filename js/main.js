@@ -144,12 +144,6 @@ function goForward() {
   updateHistoryButtons();
 }
 
-function flashScenarioTarget(target) {
-  clearExistingHighlights();
-  target.classList.add("highlight");
-  window.setTimeout(() => target.classList.remove("highlight"), 1400);
-}
-
 function findScenarioTargetFromCurrentPosition() {
   const targets = [...codeEl.querySelectorAll(".code-line.scenario-active")];
   if (targets.length === 0) {
@@ -171,8 +165,8 @@ function focusScenarioStep(step) {
       return;
     }
 
+    clearExistingHighlights();
     target.scrollIntoView({ behavior: "smooth", block: "center" });
-    flashScenarioTarget(target);
   });
 }
 
@@ -347,17 +341,18 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-historyBackEl.addEventListener("click", goBack);
-historyForwardEl.addEventListener("click", goForward);
-scenarioToggleEl.addEventListener("click", toggleScenarioMode);
+historyBackEl.addEventListener("click", () => { goBack(); historyBackEl.blur(); });
+historyForwardEl.addEventListener("click", () => { goForward(); historyForwardEl.blur(); });
+scenarioToggleEl.addEventListener("click", () => { toggleScenarioMode(); scenarioToggleEl.blur(); });
 scenarioSelectEl.addEventListener("change", (event) => {
   scenarioState.activeScenarioId = event.target.value;
   scenarioState.stepIndex = 0;
   setScenarioStep(0);
+  scenarioSelectEl.blur();
 });
-scenarioFirstEl.addEventListener("click", goToFirstScenarioStep);
-scenarioPrevEl.addEventListener("click", () => stepScenario(-1));
-scenarioNextEl.addEventListener("click", () => stepScenario(1));
+scenarioFirstEl.addEventListener("click", () => { goToFirstScenarioStep(); scenarioFirstEl.blur(); });
+scenarioPrevEl.addEventListener("click", () => { stepScenario(-1); scenarioPrevEl.blur(); });
+scenarioNextEl.addEventListener("click", () => { stepScenario(1); scenarioNextEl.blur(); });
 
 searchEl.addEventListener("input", (event) => {
   state.searchTerm = event.target.value;
