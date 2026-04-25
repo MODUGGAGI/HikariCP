@@ -266,7 +266,88 @@ export const CODE_DATA = {
          logger.debug("{} - Fill pool skipped, pool has sufficient level or currently being filled.", poolName);
       }
    }
+
+   private final class PoolEntryCreator implements Callable<Boolean>
+   {
+      private final String loggingPrefix;
+
+      PoolEntryCreator() { 
+         this(null); 
+      }
+      
+      PoolEntryCreator(final String loggingPrefix) { 
+         this.loggingPrefix = loggingPrefix; 
+      }
+
+      @Override
+      public Boolean call()
+      {
+         long sleepBackoff = 250L;
+         while (poolState == POOL_NORMAL && shouldCreateAnotherConnection()) {
+            final var poolEntry = createPoolEntry();
+            if (poolEntry != null) {
+               connectionBag.add(poolEntry); // ✅ 새 커넥션을 ConcurrentBag에 추가
+               logger.debug("{} - Added connection {}", poolName, poolEntry.connection);
+               if (loggingPrefix != null) {
+                  fillPool(true);
+               }
+               return Boolean.TRUE;
+            }
+
+            // failed to get connection from db, sleep and retry
+            quietlySleep(sleepBackoff);
+            sleepBackoff = Math.min(SECONDS.toMillis(10), Math.min(connectionTimeout, sleepBackoff * 2));
+         }
+
+         return Boolean.FALSE;
+      }
+   }
+
+   private final class HouseKeeper implements Runnable
+   {
+      @Override
+      public void run()
+      {
+         try {
+            // refresh values in case they changed via MBean
+            connectionTimeout = config.getConnectionTimeout();
+            validationTimeout = config.getValidationTimeout();
+            housekeepingPeriodMs = config.getKeepaliveTime() == 0 ? HOUSEKEEPING_PERIOD_MS
+               : Long.max(HOUSEKEEPING_PERIOD_MS, config.getKeepaliveTime());
+
+            final var idleTimeout = config.getIdleTimeout();
+            final var now = currentTime();
+
+            if (plusMillis(now, 128) < plusMillis(previous, housekeepingPeriodMs)) {
+               logger.warn("{} - Retrograde clock change detected, soft-evicting connections.", poolName);
+               previous = now;
+               softEvictConnections();
+               return;
+            }
+
+            previous = now;
+
+            if (idleTimeout > 0L && config.getMinimumIdle() < config.getMaximumPoolSize()) {
+               final var notInUse = connectionBag.values(STATE_NOT_IN_USE);
+               for (final var entry : notInUse) {
+                  if (elapsedMillis(entry.lastAccessed, now) > idleTimeout && connectionBag.reserve(entry)) {
+                     closeConnection(entry, "(connection has passed idleTimeout)");
+                  }
+               }
+            }
+
+            fillPool(true);
+         }
+         catch (Exception e) {
+            logger.error("Unexpected exception in keep alive task", e);
+         }
+      }
+   }
 }`,
+    anchors: [
+      { match: "private final class PoolEntryCreator implements Callable", id: "hp-poolentrycreator" },
+      { match: "private final class HouseKeeper implements Runnable", id: "hp-housekeeper" }
+    ],
     methods: [
       {
         name: "HikariPool",
@@ -278,7 +359,9 @@ export const CODE_DATA = {
       { name: "recycle", id: "hp-recycle" },
       { name: "addBagItem", id: "hp-addbagitem" },
       { name: "checkFailFast", id: "hp-checkfailfast" },
-      { name: "fillPool", id: "hp-fillpool" }
+      { name: "fillPool", id: "hp-fillpool" },
+      { name: "call", id: "hp-poolentrycreator-call", label: "PoolEntryCreator.call()", match: "public Boolean call()" },
+      { name: "run", id: "hp-housekeeper-run", label: "HouseKeeper.run()", match: "public void run()" }
     ]
   },
   "ConcurrentBag.java": {
@@ -299,8 +382,26 @@ export const CODE_DATA = {
    }
 
    private final CopyOnWriteArrayList<T> sharedList;
-   private final ThreadLocal<List<Object>> threadLocalList; // ✅ 스레드별 커넥션 캐시
+   private final ThreadLocal<List<Object>> threadLocalList;
    private final SynchronousQueue<T> handoffQueue;
+
+   /**
+    * ✅ 커넥션 추가 로직 (add)
+    */
+   public void add(final T bagEntry)
+   {
+      if (closed) {
+         LOGGER.info("ConcurrentBag has been closed, ignoring add()");
+         throw new IllegalStateException("ConcurrentBag has been closed, ignoring add()");
+      }
+
+      sharedList.add(bagEntry);
+
+      // spin until a thread takes it or none are waiting
+      while (waiters.get() > 0 && bagEntry.getState() == STATE_NOT_IN_USE && !handoffQueue.offer(bagEntry)) {
+         Thread.yield();
+      }
+   }
 
    /**
     * ✅ 커넥션 획득 로직 (borrow)
@@ -384,6 +485,7 @@ export const CODE_DATA = {
       { match: "int getState();", id: "cb-entry-getstate" }
     ],
     methods: [
+      { name: "add", id: "cb-add" },
       { name: "borrow", id: "cb-borrow" },
       { name: "requite", id: "cb-requite" }
     ]
@@ -518,6 +620,14 @@ export const SYMBOL_LINKS = {
   IConcurrentBagEntry: {
     file: "ConcurrentBag.java",
     anchor: "cb-iconcurrentbagentry"
+  },
+  PoolEntryCreator: {
+    file: "HikariPool.java",
+    anchor: "hp-poolentrycreator"
+  },
+  HouseKeeper: {
+    file: "HikariPool.java",
+    anchor: "hp-housekeeper"
   }
 };
 
@@ -542,6 +652,7 @@ export const TYPE_METHOD_LINKS = {
     fillPool: { file: "HikariPool.java", anchor: "hp-fillpool" }
   },
   ConcurrentBag: {
+    add: { file: "ConcurrentBag.java", anchor: "cb-add" },
     borrow: { file: "ConcurrentBag.java", anchor: "cb-borrow" },
     requite: { file: "ConcurrentBag.java", anchor: "cb-requite" }
   },
