@@ -307,5 +307,258 @@ export const SCENARIOS = [
         delay: 1600
       }
     ]
+  },
+  {
+    id: "pool-initialization",
+    title: "커넥션 풀 초기화",
+    description: "Spring Boot에서 기본 생성자로 만든 HikariDataSource가 첫 커넥션 요청 시점에 HikariPool을 지연 초기화하고, 이후 minimumIdle 커넥션을 채우는 흐름을 따라갑니다.",
+    steps: [
+      {
+        file: "HikariDataSource.java",
+        anchor: "hds-ctor",
+        label: "HikariDataSource()",
+        caption: "Spring Boot가 시작되면 HikariDataSource는 기본 생성자로 먼저 초기화됩니다. 이때 fastPathPool은 null로 설정됩니다.\nHikariCP 기본 생성자 경로에서는 지연 초기화 전략을 사용해 실제 pool start가 첫 getConnection() 호출 시점까지 미뤄집니다.",
+        delay: 1400
+      },
+      {
+        file: "HikariDataSource.java",
+        anchor: "hds-getconn",
+        label: "첫 getConnection() 요청",
+        caption: "이후 애플리케이션의 첫 커넥션 요청이 들어오면 getConnection()에서 커넥션 풀 초기화가 시작됩니다.",
+        delay: 1200
+      },
+      {
+        file: "HikariDataSource.java",
+        lineMatch: "HikariPool result = pool;",
+        label: "pool 참조 확인",
+        caption: "pool은 volatile 필드라 직접 반복해서 읽으면 일반 필드보다 접근 비용이 큽니다. 그래서 먼저 로컬 변수 result에 담아 이후 비교와 반환에 사용합니다.\n아직 초기화되지 않은 상태에서는 pool이 null이므로 result에도 null이 들어갑니다.",
+        delay: 1200
+      },
+      {
+        file: "HikariDataSource.java",
+        lineMatch: "if (result == null) {",
+        lineMatchOccurrence: 1,
+        label: "초기화 필요 여부 확인",
+        caption: "result가 null이면 아직 커넥션 풀이 만들어지지 않은 상태이므로 초기화 경로로 들어갑니다.",
+        delay: 1300
+      },
+      {
+        file: "HikariDataSource.java",
+        lineMatch: "synchronized (this) {",
+        label: "동기화 진입",
+        caption: "여러 스레드가 동시에 첫 요청을 보내도 풀은 한 번만 생성되어야 하므로 synchronized 블록에 진입합니다.\n처음으로 진입한 스레드가 Lock을 획득하고, 다른 스레드는 초기화가 끝날 때까지 대기합니다.",
+        delay: 1300
+      },
+      {
+        file: "HikariDataSource.java",
+        lineMatch: "result = pool;",
+        label: "pool 재확인",
+        caption: "락을 획득한 뒤 pool 값을 다시 읽습니다.\n락 밖에서 한 번 확인하고, 락 안에서 다시 한 번 확인하기 때문에 Double-Checked Locking입니다.\n대기하던 다른 스레드가 들어왔을 때 이미 초기화된 pool을 다시 만들지 않기 위한 구조입니다.",
+        delay: 1300
+      },
+      {
+        file: "HikariDataSource.java",
+        lineMatch: "if (result == null) {",
+        lineMatchOccurrence: 2,
+        label: "두 번째 null 확인",
+        caption: "다시 확인했을 때도 result가 null이면 현재 스레드가 실제 커넥션 풀 초기화를 수행합니다.",
+        delay: 1300
+      },
+      {
+        file: "HikariDataSource.java",
+        lineMatch: "pool = result = new HikariPool(this);",
+        label: "HikariPool 생성",
+        caption: "Double-Checked Locking 안에서 HikariPool을 생성하고, pool과 result에 같은 인스턴스를 저장합니다.",
+        delay: 1500
+      },
+      {
+        file: "HikariPool.java",
+        anchor: "hp-ctor",
+        label: "HikariPool(HikariConfig)",
+        caption: "풀 초기화의 중심인 HikariPool 생성자에 진입합니다.",
+        delay: 1400
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "super(config);",
+        label: "부모 기본 설정 초기화",
+        caption: "config 설정을 부모 클래스에 넘겨 기본 설정을 초기화합니다.",
+        delay: 1300
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "this.connectionBag = new ConcurrentBag<>(this);",
+        label: "ConcurrentBag 생성",
+        caption: "커넥션을 담을 핵심 저장소인 ConcurrentBag을 생성합니다.",
+        delay: 1400
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "this.houseKeepingExecutorService = initializeHouseKeepingExecutorService();",
+        label: "HouseKeeper executor 준비",
+        caption: "주기적으로 풀을 관리할 housekeeping executor를 준비합니다.",
+        delay: 1400
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "checkFailFast();",
+        label: "checkFailFast() 호출",
+        caption: "checkFailFast()는 커넥션을 딱 1개만 생성하여 DB 연결 가능 여부를 빠르게 검증하고, 문제가 있을 경우 애플리케이션 초기 단계에서 바로 실패하도록 하기 위한 메서드입니다.",
+        delay: 1700
+      },
+      {
+        file: "HikariPool.java",
+        anchor: "hp-checkfailfast",
+        label: "checkFailFast()",
+        caption: "checkFailFast()는 풀 초기화 직후 DB 연결이 가능한지 빠르게 확인하는 메서드입니다. 여기서는 커넥션을 딱 1개만 생성해 초기 실패를 빠르게 감지합니다.",
+        delay: 1400
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "final var poolEntry = createPoolEntry();",
+        label: "PoolEntry 생성",
+        caption: "PoolEntry를 생성합니다.",
+        delay: 1300
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "connectionBag.add(poolEntry);",
+        label: "첫 PoolEntry 추가",
+        caption: "생성된 첫 번째 PoolEntry를 ConcurrentBag에 추가합니다.",
+        delay: 1400
+      },
+      {
+        file: "ConcurrentBag.java",
+        anchor: "cb-add",
+        label: "ConcurrentBag.add()",
+        caption: "checkFailFast()에서 생성한 첫 PoolEntry가 ConcurrentBag.add()로 들어옵니다.",
+        delay: 1500
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "sharedList.add(bagEntry);",
+        label: "sharedList에 추가",
+        caption: "checkFailFast()에서 생성된 최초 PoolEntry를 sharedList에 추가합니다.\n이 커넥션은 초기 DB 연결 검증에 성공한 첫 커넥션으로 풀에 등록됩니다.",
+        delay: 1500
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "while (waiters.get() > 0 && bagEntry.getState() == STATE_NOT_IN_USE && !handoffQueue.offer(bagEntry)) {",
+        label: "대기 스레드 확인",
+        caption: "checkFailFast() 단계의 add()는 HikariPool 생성자 안에서 최초 커넥션을 검증하는 과정입니다. 아직 pool이 외부에 공개되기 전이므로 대기 중인 스레드가 있을 수 없어 handoffQueue로 전달하지 않습니다.",
+        delay: 1600
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "this.houseKeeperTask = houseKeepingExecutorService.scheduleWithFixedDelay(new HouseKeeper(), 100L, housekeepingPeriodMs, MILLISECONDS);",
+        label: "HouseKeeper 등록",
+        caption: "checkFailFast()가 완료되면 HikariPool 생성자로 돌아와 HouseKeeper를 등록합니다.\nHouseKeeper는 처음에는 100ms 뒤에 실행되고, 이후에는 housekeepingPeriodMs 주기로 계속 실행됩니다.",
+        delay: 1700
+      },
+      {
+        file: "HikariPool.java",
+        anchor: "hp-housekeeper-run",
+        label: "HouseKeeper.run()",
+        caption: "HouseKeeper는 주기적으로 실행되며 풀 상태를 점검합니다. 이 과정에서 최소 idle 커넥션 개수를 유지하도록 필요한 커넥션을 채웁니다.",
+        delay: 1500
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "fillPool(true);",
+        label: "fillPool(true) 호출",
+        caption: "HouseKeeper 내부에서 fillPool(true)를 실행해 부족한 커넥션을 채우는 단계로 넘어갑니다.",
+        delay: 1500
+      },
+      {
+        file: "HikariPool.java",
+        anchor: "hp-fillpool",
+        label: "fillPool(true)",
+        caption: "fillPool()은 현재 풀 상태를 보고 minimumIdle을 유지하기 위해\n커넥션 추가가 필요한지 판단하는 메서드입니다.",
+        delay: 1400
+      },
+      {
+        file: "HikariPool.java",
+        lineMatches: [
+          "final var shouldAdd = getTotalConnections() < config.getMaximumPoolSize() && idle < config.getMinimumIdle();",
+          "if (shouldAdd) {"
+        ],
+        label: "추가 필요 여부 판단",
+        caption: "전체 커넥션 수가 maximumPoolSize보다 작고, idle 커넥션 수가 minimumIdle보다 작으면 커넥션 추가가 필요하다고 판단합니다.",
+        delay: 1400
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "final var countToAdd = config.getMinimumIdle() - idle;",
+        label: "필요 개수 계산",
+        caption: "minimumIdle 기준으로 추가로 필요한 커넥션 개수를 계산합니다.",
+        delay: 1300
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "for (int i = 0; i < countToAdd; i++)",
+        label: "1개씩 추가 요청",
+        caption: "필요한 커넥션 개수만큼 반복하면서, 한 번에 커넥션 1개 생성 작업을 addConnectionExecutor에 위임합니다.",
+        delay: 1500
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "addConnectionExecutor.submit(isAfterAdd ? postFillPoolEntryCreator : poolEntryCreator);",
+        label: "PoolEntryCreator 제출",
+        caption: "커넥션 생성은 여기서 동기적으로 직접 실행되지 않습니다.\naddConnectionExecutor에 PoolEntryCreator 작업을 제출하고, 실제 생성은 별도 스레드가 비동기적으로 처리합니다.",
+        delay: 1500
+      },
+      {
+        file: "HikariPool.java",
+        anchor: "hp-poolentrycreator-call",
+        label: "PoolEntryCreator.call()",
+        caption: "별도 스레드가 제출된 PoolEntryCreator를 실행하면 call() 메서드에서 PoolEntry 생성을 시도합니다.",
+        delay: 1500
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "final var poolEntry = createPoolEntry();",
+        lineMatchOccurrence: 2,
+        label: "PoolEntry 생성",
+        caption: "PoolEntry를 생성합니다.",
+        delay: 1300
+      },
+      {
+        file: "HikariPool.java",
+        lineMatch: "connectionBag.add(poolEntry);",
+        lineMatchOccurrence: 2,
+        label: "ConcurrentBag.add() 호출",
+        caption: "PoolEntry가 정상 생성되면 ConcurrentBag의 add() 메서드를 호출해 커넥션 1개를 풀에 추가합니다.",
+        delay: 1500
+      },
+      {
+        file: "ConcurrentBag.java",
+        anchor: "cb-add",
+        label: "ConcurrentBag.add()",
+        caption: "HouseKeeper가 fillPool()을 통해 요청한 커넥션 생성 작업은 PoolEntryCreator.call()에서 실행됩니다.\nPoolEntryCreator가 만든 PoolEntry는 결국 ConcurrentBag.add()로 들어옵니다.",
+        delay: 1600
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "sharedList.add(bagEntry);",
+        label: "sharedList에 추가",
+        caption: "이 커넥션도 먼저 sharedList에 추가됩니다. 초기화 과정에서 만들어지는 커넥션은 sharedList에 쌓이면서 idle 커넥션 풀을 구성합니다.",
+        delay: 1500
+      },
+      {
+        file: "ConcurrentBag.java",
+        lineMatch: "while (waiters.get() > 0 && bagEntry.getState() == STATE_NOT_IN_USE && !handoffQueue.offer(bagEntry)) {",
+        label: "handoffQueue 전달 시도",
+        caption: "초기화 중 커넥션을 1개씩 추가하는 순간에 어떤 스레드가 커넥션을 기다리고 있다면, handoffQueue.offer()로 즉시 전달을 시도합니다.",
+        delay: 1600
+      },
+      {
+        file: "HikariDataSource.java",
+        lineMatch: "this.seal();",
+        lineMatchOccurrence: 2,
+        label: "설정 변경 차단",
+        caption: "HikariPool 생성 후 HikariDataSource로 돌아와 seal() 메서드를 호출합니다. seal()은 초기화 이후 설정 변경을 막습니다.",
+        delay: 1500
+      }
+    ]
   }
 ];

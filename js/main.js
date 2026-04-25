@@ -137,12 +137,21 @@ function flashScenarioTarget(target) {
   window.setTimeout(() => target.classList.remove("highlight"), 1200);
 }
 
+function findScenarioTargetFromCurrentPosition() {
+  const targets = [...codeEl.querySelectorAll(".code-line.scenario-active")];
+  if (targets.length === 0) {
+    return null;
+  }
+
+  return targets.find((target) => target.offsetTop > viewerEl.scrollTop + 4) || targets[0];
+}
+
 function focusScenarioStep(step) {
   requestAnimationFrame(() => {
     let target = step.anchor ? document.getElementById(step.anchor) : null;
 
     if (!target) {
-      target = codeEl.querySelector(".code-line.scenario-active");
+      target = findScenarioTargetFromCurrentPosition();
     }
 
     if (!target) {
@@ -198,7 +207,7 @@ function setScenarioStep(stepIndex) {
 
   navigateToFile(step.file, {
     anchor: step.anchor,
-    preserveScroll: !step.anchor,
+    preserveScroll: true,
     pushHistory: false
   });
   focusScenarioStep(step);

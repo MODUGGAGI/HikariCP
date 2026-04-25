@@ -281,24 +281,39 @@ export const CODE_DATA = {
       @Override
       public Boolean call()
       {
-         long sleepBackoff = 250L;
-         while (poolState == POOL_NORMAL && shouldCreateAnotherConnection()) {
-            final var poolEntry = createPoolEntry();
-            if (poolEntry != null) {
-               connectionBag.add(poolEntry); // ✅ 새 커넥션을 ConcurrentBag에 추가
-               logger.debug("{} - Added connection {}", poolName, poolEntry.connection);
-               if (loggingPrefix != null) {
-                  fillPool(true);
+         var backoffMs = 10L;
+         var added = false;
+         try {
+            while (shouldContinueCreating()) {
+               final var poolEntry = createPoolEntry();
+               if (poolEntry != null) {
+                  added = true;
+                  connectionBag.add(poolEntry);
+                  logger.debug("{} - Added connection {}", poolName, poolEntry.connection);
+                  quietlySleep(30L);
+                  break;
+               } else {  // failed to get connection from db, sleep and retry
+                  if (loggingPrefix != null && backoffMs % 50 == 0)
+                     logger.debug("{} - Connection add failed, sleeping with backoff: {}ms", poolName, backoffMs);
+                  quietlySleep(backoffMs);
+                  backoffMs = Math.min(SECONDS.toMillis(5), backoffMs * 2);
                }
-               return Boolean.TRUE;
             }
-
-            // failed to get connection from db, sleep and retry
-            quietlySleep(sleepBackoff);
-            sleepBackoff = Math.min(SECONDS.toMillis(10), Math.min(connectionTimeout, sleepBackoff * 2));
+         }
+         finally {
+            if (added && loggingPrefix != null)
+               logPoolState(loggingPrefix);
+            else if (!added)
+               logPoolState("Connection not added, ");
          }
 
+         // Pool is suspended, shutdown, or at max size
          return Boolean.FALSE;
+      }
+
+      private synchronized boolean shouldContinueCreating() {
+         return poolState == POOL_NORMAL && !Thread.interrupted() && getTotalConnections() < config.getMaximumPoolSize() &&
+            (getIdleConnections() < config.getMinimumIdle() || connectionBag.getWaitingThreadCount() > getIdleConnections());
       }
    }
 
@@ -360,6 +375,12 @@ export const CODE_DATA = {
       { name: "checkFailFast", id: "hp-checkfailfast" },
       { name: "fillPool", id: "hp-fillpool" },
       { name: "call", id: "hp-poolentrycreator-call", label: "PoolEntryCreator.call()", match: "public Boolean call()" },
+      {
+        name: "shouldContinueCreating",
+        id: "hp-shouldcontinuecreating",
+        label: "PoolEntryCreator.shouldContinueCreating()",
+        match: "private synchronized boolean shouldContinueCreating()"
+      },
       { name: "run", id: "hp-housekeeper-run", label: "HouseKeeper.run()", match: "public void run()" }
     ]
   },
@@ -648,7 +669,8 @@ export const TYPE_METHOD_LINKS = {
     recycle: { file: "HikariPool.java", anchor: "hp-recycle" },
     addBagItem: { file: "HikariPool.java", anchor: "hp-addbagitem" },
     checkFailFast: { file: "HikariPool.java", anchor: "hp-checkfailfast" },
-    fillPool: { file: "HikariPool.java", anchor: "hp-fillpool" }
+    fillPool: { file: "HikariPool.java", anchor: "hp-fillpool" },
+    shouldContinueCreating: { file: "HikariPool.java", anchor: "hp-shouldcontinuecreating" }
   },
   ConcurrentBag: {
     add: { file: "ConcurrentBag.java", anchor: "cb-add" },

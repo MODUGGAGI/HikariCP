@@ -11,7 +11,7 @@ export const navigationHistory = {
 };
 
 export const scenarioState = {
-  activeScenarioId: SCENARIOS[0]?.id ?? null,
+  activeScenarioId: SCENARIOS.find((scenario) => scenario.id === "pool-initialization")?.id ?? SCENARIOS[0]?.id ?? null,
   stepIndex: 0,
   isOpen: false
 };
