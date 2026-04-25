@@ -58,8 +58,8 @@ export function renderSidebar() {
         ${isActive ? `
           <div class="method-list">
             ${file.methods.map((method) => `
-              <button class="method-button" data-action="method" data-file="${fileName}" data-method-name="${method.name}">
-                ◦ ${method.name}()
+              <button class="method-button" data-action="method" data-file="${fileName}" data-method-name="${method.name}" data-method-id="${method.id}">
+                ◦ ${method.label || `${method.name}()`}
               </button>
             `).join("")}
           </div>

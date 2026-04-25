@@ -237,14 +237,18 @@ function renderScenarioOptions() {
   }
 }
 
-function jumpToMethod(fileName, methodName) {
+function jumpToMethod(fileName, methodName, methodId) {
   const performJump = () => {
     const occurrences = getMethodOccurrences(fileName).filter((item) => item.name === methodName);
     if (occurrences.length === 0) {
       return;
     }
 
-    const nextOccurrence = occurrences.find((item) => {
+    const exactOccurrence = methodId
+      ? occurrences.find((item) => item.anchor === methodId)
+      : null;
+
+    const nextOccurrence = exactOccurrence || occurrences.find((item) => {
       const target = document.getElementById(item.anchor);
       return target && target.offsetTop > viewerEl.scrollTop + 4;
     }) || occurrences[0];
@@ -274,7 +278,7 @@ document.body.addEventListener("click", (event) => {
     }
 
     if (action === "method") {
-      jumpToMethod(fileName, actionTarget.dataset.methodName);
+      jumpToMethod(fileName, actionTarget.dataset.methodName, actionTarget.dataset.methodId);
     }
 
     if (action === "scenario-step") {

@@ -8,6 +8,23 @@ export const CODE_DATA = {
    private final HikariPool fastPathPool;
    private volatile HikariPool pool;
 
+   public HikariDataSource()
+   {
+      fastPathPool = null;
+   }
+
+   public HikariDataSource(HikariConfig configuration)
+   {
+      configuration.validate();
+      configuration.copyStateTo(this);
+
+      LOGGER.info("{} - Starting...", configuration.getPoolName());
+      pool = fastPathPool = new HikariPool(this);
+      LOGGER.info("{} - Start completed.", configuration.getPoolName());
+
+      this.seal();
+   }
+
    /**
     * ✅ Connection 요청 시 첫 번째 단계
     */
@@ -50,7 +67,21 @@ export const CODE_DATA = {
       return result.getConnection();
    }
 }`,
-    methods: [{ name: "getConnection", id: "hds-getconn" }]
+    methods: [
+      {
+        name: "HikariDataSource",
+        id: "hds-ctor",
+        label: "HikariDataSource()",
+        match: "public HikariDataSource()"
+      },
+      {
+        name: "HikariDataSource",
+        id: "hds-ctor-config",
+        label: "HikariDataSource(HikariConfig)",
+        match: "public HikariDataSource(HikariConfig configuration)"
+      },
+      { name: "getConnection", id: "hds-getconn" }
+    ]
   },
   "HikariPool.java": {
     id: "hp",
@@ -63,8 +94,54 @@ export const CODE_DATA = {
    private final ThreadPoolExecutor closeConnectionExecutor;
    
    private final ConcurrentBag<PoolEntry> connectionBag; // ✅ 커넥션이 담겨 있는 실제 보관함
+   private final ProxyLeakTaskFactory leakTaskFactory;
+   private final SuspendResumeLock suspendResumeLock;
    
    private final ScheduledExecutorService houseKeepingExecutorService;
+   private ScheduledFuture<?> houseKeeperTask;
+
+   public HikariPool(final HikariConfig config)
+   {
+      super(config);
+
+      this.connectionBag = new ConcurrentBag<>(this);
+      this.suspendResumeLock = config.isAllowPoolSuspension() ? new SuspendResumeLock() : SuspendResumeLock.FAUX_LOCK;
+      this.houseKeepingExecutorService = initializeHouseKeepingExecutorService();
+
+      checkFailFast();
+
+      if (config.getMetricsTrackerFactory() != null) {
+         setMetricsTrackerFactory(config.getMetricsTrackerFactory());
+      }
+      else {
+         setMetricRegistry(config.getMetricRegistry());
+      }
+
+      setHealthCheckRegistry(config.getHealthCheckRegistry());
+
+      handleMBeans(this, true);
+
+      final var threadFactory = config.getThreadFactory();
+      final var maxPoolSize = config.getMaximumPoolSize();
+      this.addConnectionExecutor = createThreadPoolExecutor(maxPoolSize, poolName + ":connection-adder", threadFactory, new CustomDiscardPolicy());
+      this.closeConnectionExecutor = createThreadPoolExecutor(maxPoolSize, poolName + ":connection-closer", threadFactory, new ThreadPoolExecutor.CallerRunsPolicy());
+
+      this.leakTaskFactory = new ProxyLeakTaskFactory(config.getLeakDetectionThreshold(), houseKeepingExecutorService);
+      this.houseKeeperTask = houseKeepingExecutorService.scheduleWithFixedDelay(new HouseKeeper(), 100L, housekeepingPeriodMs, MILLISECONDS);
+
+      if (Boolean.getBoolean("com.zaxxer.hikari.blockUntilFilled") && config.getInitializationFailTimeout() > 1) {
+         addConnectionExecutor.setMaximumPoolSize(Math.min(16, Runtime.getRuntime().availableProcessors()));
+         addConnectionExecutor.setCorePoolSize(Math.min(16, Runtime.getRuntime().availableProcessors()));
+
+         final var startTime = currentTime();
+         while (elapsedMillis(startTime) < config.getInitializationFailTimeout() && getTotalConnections() < config.getMinimumIdle()) {
+            quietlySleep(MILLISECONDS.toMillis(100));
+         }
+
+         addConnectionExecutor.setCorePoolSize(1);
+         addConnectionExecutor.setMaximumPoolSize(1);
+      }
+   }
 
    public Connection getConnection() throws SQLException {
       return getConnection(connectionTimeout);
@@ -191,6 +268,12 @@ export const CODE_DATA = {
    }
 }`,
     methods: [
+      {
+        name: "HikariPool",
+        id: "hp-ctor",
+        label: "HikariPool(HikariConfig)",
+        match: "public HikariPool(final HikariConfig config)"
+      },
       { name: "getConnection", id: "hp-getconn" },
       { name: "recycle", id: "hp-recycle" },
       { name: "addBagItem", id: "hp-addbagitem" },

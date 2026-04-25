@@ -85,12 +85,35 @@ function resolveMethodTarget(fileName, line, lineIndex, methodName, offset) {
   return TYPE_METHOD_LINKS[currentType]?.[methodName] || null;
 }
 
+function resolveConstructorTarget(className) {
+  const fileName = `${className}.java`;
+  const constructor = CODE_DATA[fileName]?.methods.find((method) => method.name === className);
+
+  return constructor
+    ? { file: fileName, anchor: constructor.id }
+    : null;
+}
+
+function isConstructorCallPrefix(prefix) {
+  return /\bnew\s+$/.test(prefix);
+}
+
 export function getMethodOccurrences(fileName) {
   const file = CODE_DATA[fileName];
   const counts = {};
 
   return file.code.split("\n").flatMap((line, lineIndex) =>
     file.methods.flatMap((method) => {
+      if (method.match) {
+        return line.includes(method.match)
+          ? [{
+              name: method.name,
+              lineIndex,
+              anchor: method.id
+            }]
+          : [];
+      }
+
       if (!isMethodDeclaration(line, method.name)) {
         return [];
       }
@@ -132,6 +155,12 @@ export function highlightLine(line, fileName, lineIndex) {
           if (SYMBOL_LINKS[methodWord]) {
             const { file, anchor } = SYMBOL_LINKS[methodWord];
             return renderLink("class-link", methodWord, file, anchor);
+          }
+          if (classNames.includes(methodWord) && isConstructorCallPrefix(codePart.slice(0, absoluteOffset))) {
+            const constructorTarget = resolveConstructorTarget(methodWord);
+            if (constructorTarget) {
+              return renderLink("method-link", methodWord, constructorTarget.file, constructorTarget.anchor);
+            }
           }
           if (classNames.includes(methodWord)) {
             return renderLink("class-link", methodWord, `${methodWord}.java`);
