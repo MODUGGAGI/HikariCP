@@ -12,6 +12,8 @@ import {
 } from "./dom.js";
 import { getMethodOccurrences, highlightLine } from "./code-model.js";
 
+let _lastRenderedFile = null;
+
 function getScenarioLineIndices(fileName, step = getActiveScenarioStep()) {
   if (!step || step.file !== fileName) {
     return [];
@@ -76,6 +78,10 @@ export function renderTabs() {
       <span>${fileName}</span>
     </button>
   `).join("");
+
+  requestAnimationFrame(() => {
+    tabsEl.querySelector(".tab-button.active")?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+  });
 }
 
 export function renderCode() {
@@ -88,6 +94,15 @@ export function renderCode() {
 
   summaryEl.textContent = file.description;
   footerPathEl.textContent = `src/main/java/com/zaxxer/hikari/${state.activeFile}`;
+
+  const fileChanged = state.activeFile !== _lastRenderedFile;
+  _lastRenderedFile = state.activeFile;
+
+  if (fileChanged) {
+    codeEl.classList.remove("is-entering");
+    void codeEl.offsetWidth;
+    codeEl.classList.add("is-entering");
+  }
 
   codeEl.innerHTML = lines.map((line, idx) => {
     const method = methodOccurrenceByLine.get(idx);

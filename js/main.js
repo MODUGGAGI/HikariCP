@@ -39,9 +39,19 @@ function isSameLocation(left, right) {
   return left?.file === right?.file && left?.scrollTop === right?.scrollTop;
 }
 
+function clearExistingHighlights() {
+  codeEl.querySelectorAll(".highlight").forEach((el) => el.classList.remove("highlight"));
+}
+
 function updateHistoryButtons() {
-  historyBackEl.disabled = navigationHistory.backStack.length === 0;
-  historyForwardEl.disabled = navigationHistory.forwardStack.length === 0;
+  const backEntry = navigationHistory.backStack[navigationHistory.backStack.length - 1];
+  const fwdEntry  = navigationHistory.forwardStack[navigationHistory.forwardStack.length - 1];
+
+  historyBackEl.disabled = !backEntry;
+  historyForwardEl.disabled = !fwdEntry;
+
+  historyBackEl.title    = backEntry  ? `← ${backEntry.file}`  : "";
+  historyForwardEl.title = fwdEntry   ? `${fwdEntry.file} →`   : "";
 }
 
 function restoreLocation(location) {
@@ -79,6 +89,7 @@ function navigateToFile(fileName, options = {}) {
     pushHistoryEntry(getCurrentLocation());
   }
 
+  const isCrossFile = state.activeFile !== fileName;
   setActiveFile(fileName);
   requestAnimationFrame(() => {
     if (!preserveScroll) {
@@ -91,15 +102,16 @@ function navigateToFile(fileName, options = {}) {
         return;
       }
 
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      clearExistingHighlights();
+      target.scrollIntoView({ behavior: isCrossFile ? "instant" : "smooth", block: "center" });
       target.classList.add("highlight");
-      window.setTimeout(() => target.classList.remove("highlight"), 1500);
+      window.setTimeout(() => target.classList.remove("highlight"), 1400);
     }
   });
 }
 
 function jumpToAnchor(fileName, targetId) {
-  navigateToFile(fileName, { anchor: targetId, pushHistory: true });
+  navigateToFile(fileName, { anchor: targetId, preserveScroll: true, pushHistory: true });
 }
 
 function goBack() {
@@ -133,8 +145,9 @@ function goForward() {
 }
 
 function flashScenarioTarget(target) {
+  clearExistingHighlights();
   target.classList.add("highlight");
-  window.setTimeout(() => target.classList.remove("highlight"), 1200);
+  window.setTimeout(() => target.classList.remove("highlight"), 1400);
 }
 
 function findScenarioTargetFromCurrentPosition() {
@@ -305,6 +318,32 @@ document.body.addEventListener("click", (event) => {
     }
 
     navigateToFile(navLink.dataset.file, { pushHistory: true });
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  const inInput = ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName);
+  if (inInput) return;
+
+  if (event.altKey && event.key === "ArrowLeft") {
+    event.preventDefault();
+    goBack();
+    return;
+  }
+  if (event.altKey && event.key === "ArrowRight") {
+    event.preventDefault();
+    goForward();
+    return;
+  }
+
+  if (scenarioState.isOpen && !event.altKey && !event.ctrlKey && !event.metaKey) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      stepScenario(-1);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      stepScenario(1);
+    }
   }
 });
 
