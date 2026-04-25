@@ -34,7 +34,6 @@ export const CODE_DATA = {
          throw new SQLException("HikariDataSource " + this + " has been closed.");
       }
 
-      // Spring Boot 사용 시 보통 fastPathPool에서 커넥션을 가져옵니다.
       if (fastPathPool != null) {
          return fastPathPool.getConnection();
       }

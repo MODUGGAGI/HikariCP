@@ -13,16 +13,23 @@ export const SCENARIOS = [
       },
       {
         file: "HikariDataSource.java",
-        lineMatch: "if (fastPathPool != null) {",
-        label: "fastPathPool 확인",
-        caption: "먼저 fastPathPool이 이미 준비되어 있는지 확인합니다.",
+        lineMatch: "HikariPool result = pool;",
+        label: "pool 참조 확보",
+        caption: "Spring Boot 자동 구성은 기본 생성자를 사용하므로 fastPathPool은 null입니다.\n volatile 타입 pool 변수를 로컬 변수 result에 담아 참조를 가져옵니다.",
         delay: 1200
       },
       {
         file: "HikariDataSource.java",
-        lineMatch: "return fastPathPool.getConnection();",
+        lineMatch: "if (result == null) {",
+        label: "pool 초기화 여부 확인",
+        caption: "커넥션 획득 시점에는 이미 풀이 초기화되어 있으므로 result는 null이 아닙니다. 이 조건은 false가 되어 바로 다음으로 넘어갑니다.",
+        delay: 1300
+      },
+      {
+        file: "HikariDataSource.java",
+        lineMatch: "return result.getConnection();",
         label: "HikariPool.getConnection() 호출",
-        caption: "fastPathPool이 있으면 HikariPool.getConnection()으로 바로 위임합니다.",
+        caption: "풀이 준비되었으면 result.getConnection()으로 HikariPool에 커넥션 획득을 위임합니다.",
         delay: 1500
       },
       {
@@ -170,7 +177,7 @@ export const SCENARIOS = [
       },
       {
         file: "HikariDataSource.java",
-        lineMatch: "return fastPathPool.getConnection();",
+        lineMatch: "return result.getConnection();",
         label: "HikariDataSource로 복귀",
         caption: "HikariPool이 만든 ProxyConnection이 다시 HikariDataSource를 통해 애플리케이션으로 전달됩니다.",
         delay: 1700
