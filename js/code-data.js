@@ -25,9 +25,6 @@ export const CODE_DATA = {
       this.seal();
    }
 
-   /**
-    * ✅ Connection 요청 시 첫 번째 단계
-    */
    @Override
    public Connection getConnection() throws SQLException {
       if (isClosed()) {
@@ -92,7 +89,7 @@ export const CODE_DATA = {
    private final ThreadPoolExecutor addConnectionExecutor;
    private final ThreadPoolExecutor closeConnectionExecutor;
    
-   private final ConcurrentBag<PoolEntry> connectionBag; // ✅ 커넥션이 담겨 있는 실제 보관함
+   private final ConcurrentBag<PoolEntry> connectionBag;
    private final ProxyLeakTaskFactory leakTaskFactory;
    private final SuspendResumeLock suspendResumeLock;
    
@@ -153,7 +150,6 @@ export const CODE_DATA = {
       try {
          var timeout = hardTimeout;
          do {
-            // ✅ ConcurrentBag에서 커넥션을 빌려옵니다.
             var poolEntry = connectionBag.borrow(timeout, MILLISECONDS);
 
             if (poolEntry == null) {
@@ -173,7 +169,6 @@ export const CODE_DATA = {
                      logger.warn("beginRequest Failed for: {}, ({})", poolEntry.connection, e.getMessage());
                   }
                }
-               // ✅ 최종적으로 HikariProxyConnection으로 감싸서 반환합니다.
                return poolEntry.createProxyConnection(leakTaskFactory.schedule(poolEntry));
             }
          } while (timeout > 0L);
@@ -190,9 +185,6 @@ export const CODE_DATA = {
       }
    }
 
-   /**
-    * ✅ Connection 반납 시 호출되는 메서드
-    */
    void recycle(final PoolEntry poolEntry) {
       metricsTracker.recordConnectionUsage(poolEntry);
       if (poolEntry.isMarkedEvicted()) {
@@ -205,7 +197,7 @@ export const CODE_DATA = {
                logger.warn("endRequest Failed for: {},({})", poolEntry.connection, e.getMessage());
             }
          }
-         connectionBag.requite(poolEntry); // ✅ 다시 ConcurrentBag으로 반납
+         connectionBag.requite(poolEntry);
       }
    }
    
@@ -405,9 +397,6 @@ export const CODE_DATA = {
    private final ThreadLocal<List<Object>> threadLocalList;
    private final SynchronousQueue<T> handoffQueue;
 
-   /**
-    * ✅ 커넥션 추가 로직 (add)
-    */
    public void add(final T bagEntry)
    {
       if (closed) {
@@ -423,11 +412,7 @@ export const CODE_DATA = {
       }
    }
 
-   /**
-    * ✅ 커넥션 획득 로직 (borrow)
-    */
    public T borrow(long timeout, final TimeUnit timeUnit) throws InterruptedException {
-      // 1️⃣ ThreadLocal 캐시에서 먼저 찾기
       // Try the thread-local list first
       final var list = threadLocalList.get();
       for (var i = list.size() - 1; i >= 0; i--) {
@@ -442,7 +427,6 @@ export const CODE_DATA = {
       // Otherwise, scan the shared list ... then poll the handoff queue
       const waiting = waiters.incrementAndGet();
       try {
-         // 2️⃣ sharedList (전체 목록) 스캔 및 CAS 시도
          for (T bagEntry : sharedList) {
             if (bagEntry.compareAndSet(STATE_NOT_IN_USE, STATE_IN_USE)) {
                // If we may have stolen another waiter's connection, request another bag add.
@@ -453,7 +437,6 @@ export const CODE_DATA = {
             }
          }
 
-         // 3️⃣ handoffQueue에서 대기
          listener.addBagItem(waiting);
          
          timeout = timeUnit.toNanos(timeout);
@@ -474,9 +457,6 @@ export const CODE_DATA = {
       }
    }
 
-   /**
-    * ✅ 커넥션 반납 로직 (requite)
-    */
    public void requite(final T bagEntry) {
       bagEntry.setState(STATE_NOT_IN_USE);
 
@@ -587,9 +567,6 @@ export const CODE_DATA = {
    private final boolean isReadOnly;
    private final boolean isAutoCommit;
 
-   /**
-    * ✅ 자신을 관리하는 HikariPool에 반납 요청
-    */
    void recycle() {
       if (connection != null) {
          this.lastAccessed = currentTime();
@@ -597,9 +574,6 @@ export const CODE_DATA = {
       }
    }
    
-   /**
-    * ✅ 상태를 변경하는 원자적인 CAS 메서드
-    */ 
    @Override
    public boolean compareAndSet(int expect, int update)
    {
